@@ -9,7 +9,7 @@ services:
     volumes:
       - ./input_file.jpg:/usr/src/app/input_file.jpg
     healthcheck:
-      test: ["sh", "-c", "test -f .ready || exit 1"]
+      test: ["CMD-SHELL", "test -f .ready || exit 1"]
       interval: 1m30s
       timeout: 30s
       retries: 5
