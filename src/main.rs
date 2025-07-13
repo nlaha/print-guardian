@@ -57,8 +57,11 @@ use printer::PrinterService;
 /// ./print-guardian
 /// ```
 fn main() -> Result<()> {
-    // Initialize logger
-    env_logger::init();
+    // Initialize logger to output to stdout with info level by default
+    env_logger::Builder::from_default_env()
+        .target(env_logger::Target::Stdout)
+        .filter_level(log::LevelFilter::Info)
+        .init();
 
     // Load configuration from environment variables
     let config = Config::load().expect(
@@ -99,7 +102,10 @@ fn main() -> Result<()> {
     // Create output directory
     fs::create_dir_all(&config.output_dir)?;
 
-    info!("Output directory created at: {}", config.output_dir);
+    info!(
+        "Output directory created at: {}",
+        config.output_dir.display()
+    );
 
     // Create .ready file to indicate the application is fully initialized
     fs::write(".ready", "ready")?;
