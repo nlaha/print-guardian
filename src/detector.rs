@@ -57,6 +57,16 @@ impl FailureDetector {
             .map(ToOwned::to_owned)
             .collect::<Vec<_>>();
 
+        // print labels file content
+        info!(
+            "Loaded labels: {:?}",
+            labels
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
         // Load the neural network
         let network = Network::load(model_cfg, Some(weights_path), false)?;
 
@@ -149,20 +159,6 @@ impl FailureDetector {
 
         // Process detections and filter by thresholds
         for det in detections.iter() {
-            debug!(
-                "Detection objectness: {:.4} (threshold: {:.4})",
-                det.objectness(),
-                self.objectness_threshold
-            );
-            debug!(
-                "Detection class probabilities: {:?}",
-                det.probabilities()
-                    .iter()
-                    .map(f32::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-
             if det.objectness() > self.objectness_threshold {
                 // Get the best class without threshold filtering for debugging
                 if let Some((class_index, prob)) = det.best_class(None) {
