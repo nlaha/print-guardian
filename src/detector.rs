@@ -169,36 +169,6 @@ impl FailureDetector {
         Ok(results)
     }
 
-    /// Get the maximum detection probability from the latest inference.
-    ///
-    /// Returns the highest confidence score among all detections, useful for
-    /// logging and monitoring purposes.
-    ///
-    /// # Arguments
-    ///
-    /// * `image_path` - Path to the image file to analyze
-    ///
-    /// # Returns
-    ///
-    /// Returns the maximum probability as a percentage string, or "No detections"
-    /// if no objects were detected.
-    pub fn get_max_detection_probability(&mut self, image_path: &PathBuf) -> Result<String> {
-        let image = Image::open(image_path)?;
-        let detections = self.network.predict(&image, 0.25, 0.5, 0.45, true);
-
-        let max_prob = detections
-            .iter()
-            .map(|det| det.probabilities().get(0).map_or(0.0, |p| *p))
-            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-            .unwrap_or(0.0);
-
-        if max_prob > 0.0 {
-            Ok(format!("{:.2}%", max_prob * 100.0))
-        } else {
-            Ok("No detections".to_string())
-        }
-    }
-
     /// Get the list of class labels.
     pub fn get_labels(&self) -> &[String] {
         &self.labels

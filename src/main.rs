@@ -141,21 +141,6 @@ fn main() -> Result<()> {
             continue;
         }
 
-        // Log detection probability
-        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-        match detector.get_max_detection_probability(&image_path) {
-            Ok(prob_str) => {
-                info!(
-                    "{}: Maximum detection probability (first class): {}",
-                    timestamp, prob_str
-                );
-            }
-            Err(e) => {
-                error!("{}: Failed to get detection probability: {}", timestamp, e);
-                continue;
-            }
-        }
-
         // Run failure detection
         let detections = match detector.detect_failures(&image_path) {
             Ok(detections) => detections,
@@ -164,6 +149,21 @@ fn main() -> Result<()> {
                 continue;
             }
         };
+
+        // get detection with max confidence
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let max_detection_prob = detections
+            .iter()
+            .map(|d| d.confidence_percent())
+            .max()
+            .unwrap_or(0.0);
+
+        info!(
+            "{}: Detected {} failures with max confidence {:.2}%",
+            timestamp,
+            detections.len(),
+            max_detection_prob
+        );
 
         // Process detections
         for detection in detections {
