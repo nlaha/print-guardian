@@ -111,6 +111,8 @@ impl FailureDetector {
             }
 
             let model_weights_data = response.bytes()?;
+
+            // Write the file directly to the specified path
             fs::write(weights_path, model_weights_data)?;
 
             info!("Model weights downloaded successfully");
