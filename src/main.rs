@@ -102,7 +102,7 @@ fn main() -> Result<()> {
 
     loop {
         // First check if the printer is online
-        if let Err(e) = printer_service.check_printer_status() {
+        if let Err(e) = printer_service.get_printer_status() {
             warn!(
                 "Printer is offline, retrying in {} seconds: {}",
                 constants::RETRY_DELAY_SECONDS,
@@ -113,11 +113,12 @@ fn main() -> Result<()> {
         }
 
         // Fetch image with retry logic
+        let image_url = image_fetcher.get_image_url().clone();
+        let max_retries = image_fetcher.get_max_retries();
         let image_data = match image_fetcher.fetch_with_retry(|alert_type| match alert_type {
-            AlertType::SystemOffline => alert_service.send_system_offline_alert(
-                image_fetcher.get_image_url(),
-                image_fetcher.get_max_retries(),
-            ),
+            AlertType::SystemOffline => {
+                alert_service.send_system_offline_alert(&image_url, max_retries)
+            }
             AlertType::SystemRecovery => alert_service.send_system_recovery_alert(),
         }) {
             Ok(data) => data,
