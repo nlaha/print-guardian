@@ -1,5 +1,5 @@
 services:
-  printguardian:
+  worker:
     image: printguardian
     build:
       context: .
