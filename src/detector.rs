@@ -95,12 +95,13 @@ impl FailureDetector {
     /// - File cannot be written to disk
     /// - Remote server returns error status
     pub fn ensure_weights_downloaded(weights_path: &PathBuf, download_url: &str) -> Result<()> {
+        // download model weights to model-weights.darknet if it doesn't exist
         if !weights_path.exists() {
             info!(
-                "Model weights not found, downloading from: {}",
+                "Model weights not found at {}, downloading from {}",
+                weights_path.display(),
                 download_url
             );
-
             let response = reqwest::blocking::get(download_url)?;
             if !response.status().is_success() {
                 return Err(anyhow::anyhow!(
@@ -109,14 +110,13 @@ impl FailureDetector {
                     response.status()
                 ));
             }
-
             let model_weights_data = response.bytes()?;
-
-            // Write the file directly to the specified path
             fs::write(weights_path, model_weights_data)?;
-
-            info!("Model weights downloaded successfully");
+        } else {
+            info!("Model weights already exist at {}", weights_path.display());
         }
+
+        info!("Model weights are ready at {}", weights_path.display());
 
         Ok(())
     }

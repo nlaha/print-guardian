@@ -43,7 +43,7 @@ use printer::PrinterService;
 /// Optional (with defaults):
 /// * `LABEL_FILE` - Path to label file (default: "./labels.txt")
 /// * `MODEL_CFG` - Path to model config file (default: "./model.cfg")
-/// * `WEIGHTS_FILE` - Path to weights file (default: "./model-weights.darknet")
+/// * `WEIGHTS_FILE` - Path to weights file (default: "./model/model-weights.darknet")
 /// * `OUTPUT_DIR` - Output directory (default: "./output")
 /// * `OBJECTNESS_THRESHOLD` - Objectness threshold (default: "0.5")
 /// * `CLASS_PROB_THRESHOLD` - Class probability threshold (default: "0.5")

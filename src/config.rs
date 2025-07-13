@@ -76,7 +76,7 @@ impl Config {
     /// Returns an error if required environment variables are not set or cannot be parsed:
     /// - `LABEL_FILE`: Path to the label file (default: "./labels.txt")
     /// - `MODEL_CFG`: Path to the model config file (default: "./model.cfg")
-    /// - `WEIGHTS_FILE`: Path to the weights file (default: "./model-weights.darknet")
+    /// - `WEIGHTS_FILE`: Path to the weights file (default: "./model/model-weights.darknet")
     /// - `OUTPUT_DIR`: Output directory path (default: "./output")
     /// - `OBJECTNESS_THRESHOLD`: Objectness threshold (default: "0.5")
     /// - `CLASS_PROB_THRESHOLD`: Class probability threshold (default: "0.5")
@@ -98,7 +98,8 @@ impl Config {
             PathBuf::from(std::env::var("MODEL_CFG").unwrap_or_else(|_| "./model.cfg".to_string()));
 
         let weights = PathBuf::from(
-            std::env::var("WEIGHTS_FILE").unwrap_or_else(|_| "./model-weights.darknet".to_string()),
+            std::env::var("WEIGHTS_FILE")
+                .unwrap_or_else(|_| "./model/model-weights.darknet".to_string()),
         );
 
         let output_dir =
