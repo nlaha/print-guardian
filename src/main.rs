@@ -105,6 +105,9 @@ fn main() -> Result<()> {
     info!("Print Guardian initialized successfully. Starting monitoring loop...");
 
     loop {
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        info!("{}: Starting new monitoring iteration", timestamp);
+
         // First check if the printer is online
         if let Err(e) = printer_service.get_printer_status() {
             warn!(
@@ -134,6 +137,11 @@ fn main() -> Result<()> {
             }
         };
 
+        info!(
+            "{}: Fetched image from {} successfully",
+            timestamp, image_url
+        );
+
         // Save image to disk for processing
         let image_path = PathBuf::from("input_file.jpg");
         if let Err(e) = fs::write(&image_path, image_data) {
@@ -151,11 +159,10 @@ fn main() -> Result<()> {
         };
 
         // get detection with max confidence
-        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
         let max_detection_prob = detections
             .iter()
             .map(|d| d.confidence_percent())
-            .max()
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .unwrap_or(0.0);
 
         info!(
