@@ -85,6 +85,8 @@ fn main() -> Result<()> {
         config.class_prob_threshold,
     )?;
 
+    info!("Failure detector initialized");
+
     // Initialize image fetcher
     let mut image_fetcher = ImageFetcher::new(
         config.image_url.clone(),
@@ -92,8 +94,12 @@ fn main() -> Result<()> {
         constants::RETRY_DELAY_SECONDS,
     );
 
+    info!("Image fetcher initialized with URL: {}", config.image_url);
+
     // Create output directory
     fs::create_dir_all(&config.output_dir)?;
+
+    info!("Output directory created at: {}", config.output_dir);
 
     // Create .ready file to indicate the application is fully initialized
     fs::write(".ready", "ready")?;
