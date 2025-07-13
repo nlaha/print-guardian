@@ -22,10 +22,10 @@ struct Args {
     #[argh(option, default = "PathBuf::from(\"./output\")")]
     output_dir: PathBuf,
     /// the objectness threshold.
-    #[argh(option, default = "0.9")]
+    #[argh(option, default = "0.5")]
     objectness_threshold: f32,
     /// the class probability threshold.
-    #[argh(option, default = "0.9")]
+    #[argh(option, default = "0.5")]
     class_prob_threshold: f32,
 
     /// the URL to fetch the input image from.
