@@ -16,4 +16,9 @@ RUN apt-get update && apt-get install -y \
 
 RUN cargo install --path .
 
-CMD ["print-guardian"]
+# Add healthcheck that waits for the .ready file to be created
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
+	CMD test -f .ready || exit 1
+
+# Clean up any existing .ready file on startup and then run the application
+CMD ["sh", "-c", "rm -f .ready && print-guardian"]

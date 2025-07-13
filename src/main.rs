@@ -95,6 +95,10 @@ fn main() -> Result<()> {
     // Create output directory
     fs::create_dir_all(&config.output_dir)?;
 
+    // Create .ready file to indicate the application is fully initialized
+    fs::write(".ready", "ready")?;
+    info!("Application ready - created .ready file for healthcheck");
+
     // Main monitoring loop state
     let mut print_failures = 0;
 
@@ -141,7 +145,10 @@ fn main() -> Result<()> {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
         match detector.get_max_detection_probability(&image_path) {
             Ok(prob_str) => {
-                debug!("{}: Detection probability: {}", timestamp, prob_str);
+                info!(
+                    "{}: Maximum detection probability (first class): {}",
+                    timestamp, prob_str
+                );
             }
             Err(e) => {
                 error!("{}: Failed to get detection probability: {}", timestamp, e);
