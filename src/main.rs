@@ -85,23 +85,22 @@ fn fetch_image_with_retry(
         if *retry_count >= max_retries {
             // Only send the disconnect alert if we haven't sent it already
             if !*disconnect_alert_sent {
-                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                let alert_message = format!(
-                    "[{}] CRITICAL: Failed to fetch image from {} after {} attempts. Print monitoring is offline!",
-                    timestamp, image_url, max_retries
+                let alert_description = format!(
+                    "Failed to fetch image from {} after {} attempts. Print monitoring is offline!",
+                    image_url, max_retries
                 );
 
                 // Send alert to Discord webhook
-                let client = reqwest::blocking::Client::new();
-                if let Err(webhook_err) = client
-                    .post(discord_webhook)
-                    .header("Content-Type", "application/json")
-                    .body(format!(r#"{{"content": "{}"}}"#, alert_message))
-                    .send()
-                {
+                if let Err(webhook_err) = send_discord_alert(
+                    discord_webhook,
+                    "CRITICAL: Print Monitoring Offline",
+                    &alert_description,
+                    0xFF0000, // Red color
+                    "🚨"
+                ) {
                     println!("Failed to send Discord alert: {}", webhook_err);
                 } else {
-                    println!("Sent Discord alert: {}", alert_message);
+                    println!("Sent Discord alert for connection failure");
                     *disconnect_alert_sent = true;
                 }
             }
@@ -115,6 +114,55 @@ fn fetch_image_with_retry(
         println!("Retrying in {} seconds...", retry_delay_seconds);
         thread::sleep(Duration::from_secs(retry_delay_seconds));
     }
+}
+
+/// Send a Discord alert with rich embed formatting
+fn send_discord_alert(webhook_url: &str, title: &str, description: &str, color: u32, emoji: &str) -> Result<()> {
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    
+    let embed = serde_json::json!({
+        "embeds": [{
+            "title": format!("{} {}", emoji, title),
+            "description": description,
+            "color": color,
+            "timestamp": timestamp,
+            "footer": {
+                "text": "Print Guardian"
+            }
+        }]
+    });
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post(webhook_url)
+        .header("Content-Type", "application/json")
+        .json(&embed)
+        .send()?;
+
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Failed to send Discord alert: HTTP {}",
+            response.status()
+        ));
+    }
+
+    Ok(())
+}
+
+fn pause_print(moonraker_api_url: &str) -> Result<()> {
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post(format!("{}/printer/print/pause", moonraker_api_url))
+        .send()?;
+
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Failed to pause print: HTTP {}",
+            response.status()
+        ));
+    }
+
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -131,6 +179,11 @@ fn main() -> Result<()> {
     // load discord webhook URL from environment variable
     let discord_webhook =
         std::env::var("DISCORD_WEBHOOK").expect("DISCORD_WEBHOOK environment variable must be set");
+
+    // get moonraker API URL from environment variable
+    let moonraker_api_url =
+        std::env::var("MOONRAKER_API_URL").expect("MOONRAKER_API_URL environment variable must be set");
+    println!("Using Moonraker API URL: {}", moonraker_api_url);
 
     // download model weights to model-weights.darknet if it doesn't exist
     if !weights.exists() {
@@ -160,6 +213,8 @@ fn main() -> Result<()> {
     const MAX_RETRIES: u32 = 15;
     const RETRY_DELAY_SECONDS: u64 = 15;
 
+    let mut print_failures = 0;
+
     loop {
         // download input image from image_url with retry logic
         let image_data = match fetch_image_with_retry(
@@ -173,21 +228,16 @@ fn main() -> Result<()> {
             Ok(data) => {
                 // If we successfully got data after being disconnected, send recovery message
                 if disconnect_alert_sent {
-                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                    let recovery_message = format!(
-                        "[{}] RECOVERY: Print monitoring is back online! Image fetch successful after connection issues.",
-                        timestamp
-                    );
-                    let client = reqwest::blocking::Client::new();
-                    if let Err(webhook_err) = client
-                        .post(&discord_webhook)
-                        .header("Content-Type", "application/json")
-                        .body(format!(r#"{{"content": "{}"}}"#, recovery_message))
-                        .send()
-                    {
+                    if let Err(webhook_err) = send_discord_alert(
+                        &discord_webhook,
+                        "RECOVERY: Print Monitoring Back Online",
+                        "Image fetch successful after connection issues.",
+                        0x00FF00, // Green color
+                        "✅"
+                    ) {
                         println!("Failed to send Discord recovery alert: {}", webhook_err);
                     } else {
-                        println!("Sent Discord recovery alert: {}", recovery_message);
+                        println!("Sent Discord recovery alert");
                     }
                     disconnect_alert_sent = false;
                 }
@@ -217,27 +267,24 @@ fn main() -> Result<()> {
         // Run object detection
         let detections = net.predict(&image, 0.25, 0.5, 0.45, true);
 
-        let max_det = detections.iter().max_by(|a, b| {
-            a.best_class(Some(class_prob_threshold))
-                .unwrap_or((0, 0.0))
-                .1
-                .partial_cmp(
-                    &b.best_class(Some(class_prob_threshold))
-                        .unwrap_or((0, 0.0))
-                        .1,
-                )
-                .unwrap_or(std::cmp::Ordering::Less)
-        });
-        if let Some(max_det) = max_det {
-            // log
-            println!(
-                "Max detection probability: {:?}",
-                max_det
-                    .best_class(Some(class_prob_threshold))
-                    .unwrap_or((0, 0.0))
-                    .1
-            );
-        }
+        // print detection probabilities with timestamp
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        println!(
+            "{}: Detection probability: {}",
+            timestamp,
+            detections
+                .iter()
+                // get first class probabilities
+                .map(|det| det.probabilities().get(0).map_or(0.0, |p| *p))
+                .collect::<Vec<_>>()
+                // get max probabilities
+                .iter()
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .map_or("No detections".to_string(), |&p| format!(
+                    "{:.2}%",
+                    p * 100.0
+                ))
+        );
 
         detections
         .iter()
@@ -252,24 +299,52 @@ fn main() -> Result<()> {
             let BBox { x, y, w, h } = bbox;
 
             // if prob > 0.5 send an alert to the discord webhook
-            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
 
             if prob > 0.5 {
                 println!(
                     "{}: Detected {} print failure with {:.2}% confidence at x: {}, y: {}, w: {}, h: {}",
                     timestamp, label, prob * 100.0, x, y, w, h
                 );
-                let alert_message = format!(
-                    "[{}] Alert! Detected print failure with {:.2}% confidence at x: {}, y: {}, w: {}, h: {}",
-                    timestamp,
-                    prob * 100.0,
-                    x,
-                    y,
-                    w,
-                    h,
+                
+                let alert_description = format!(
+                    "Detected **{}** print failure with **{:.2}%** confidence\n\n**Location:**\n• X: {:.1}\n• Y: {:.1}\n• Width: {:.1}\n• Height: {:.1}",
+                    label, prob * 100.0, x, y, w, h
                 );
-                let client = reqwest::blocking::Client::new();
-                let _ = client.post(&discord_webhook).body(alert_message).send();
+                
+                print_failures += 1;
+
+                // Pause the print if we detect more than 3 print failures
+                if print_failures > 3 {
+                    if let Err(pause_err) = pause_print(&moonraker_api_url) {
+                        println!("Failed to pause print: {}", pause_err);
+                    } else {
+                        send_discord_alert(
+                            &discord_webhook,
+                            "Print Paused Due to Multiple Failures",
+                            &format!(
+                                "Print has been paused after detecting {} print failures. Please check the printer.",
+                                print_failures
+                            ),
+                            0xFF0000, // Red color
+                            "🚨"
+                        ).unwrap_or_else(|e| println!("Failed to send pause alert: {}", e));
+                        println!("Print paused due to multiple failures. Alert sent to Discord.");
+
+                        print_failures = 0; // Reset after pausing
+                    }
+                }
+
+                if let Err(webhook_err) = send_discord_alert(
+                    &discord_webhook,
+                    "Print Failure Detected",
+                    &alert_description,
+                    0xFFA500, // Orange color
+                    "⚠️"
+                ) {
+                    println!("Failed to send Discord print failure alert: {}", webhook_err);
+                } else {
+                    println!("Sent Discord print failure alert");
+                }
             } else {
                 println!("{}: No significant print failure detected.", timestamp);
             }

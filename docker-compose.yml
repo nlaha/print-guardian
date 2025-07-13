@@ -6,3 +6,5 @@ services:
       context: .
       dockerfile: ./Dockerfile
     env_file: .env
+    volumes:
+      - ./input_file.jpg:/usr/src/app/input_file.jpg

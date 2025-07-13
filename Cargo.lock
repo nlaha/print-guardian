@@ -1455,6 +1455,7 @@ dependencies = [
  "darknet",
  "image 0.25.6",
  "reqwest",
+ "serde_json",
 ]
 
 [[package]]
