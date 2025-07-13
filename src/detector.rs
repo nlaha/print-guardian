@@ -1,6 +1,6 @@
 use anyhow::Result;
 use darknet::{BBox, Image, Network};
-use log::info;
+use log::{debug, info};
 use std::{fs, path::PathBuf};
 
 /// Print failure detection service using YOLO/Darknet neural networks.
@@ -143,28 +143,56 @@ impl FailureDetector {
         // Run object detection with NMS parameters
         let detections = self.network.predict(&image, 0.25, 0.5, 0.45, true);
 
+        debug!("Raw detections count: {}", detections.len());
+
         let mut results = Vec::new();
+        let mut filtered_by_objectness = 0;
+        let mut filtered_by_class_prob = 0;
 
         // Process detections and filter by thresholds
-        for det in detections
-            .iter()
-            .filter(|det| det.objectness() > self.objectness_threshold)
-        {
-            if let Some((class_index, prob)) = det.best_class(Some(self.class_prob_threshold)) {
-                let bbox = *det.bbox();
-                let label = self
-                    .labels
-                    .get(class_index)
-                    .unwrap_or(&"unknown".to_string())
-                    .clone();
+        for det in detections.iter() {
+            debug!(
+                "Detection objectness: {:.4} (threshold: {:.4})",
+                det.objectness(),
+                self.objectness_threshold
+            );
 
-                results.push(Detection {
-                    label,
-                    confidence: prob,
-                    bbox,
-                });
+            if det.objectness() > self.objectness_threshold {
+                if let Some((class_index, prob)) = det.best_class(Some(self.class_prob_threshold)) {
+                    let bbox = *det.bbox();
+                    let label = self
+                        .labels
+                        .get(class_index)
+                        .unwrap_or(&"unknown".to_string())
+                        .clone();
+
+                    debug!(
+                        "Valid detection - Class: {} (index: {}), Probability: {:.4} (threshold: {:.4})",
+                        label, class_index, prob, self.class_prob_threshold
+                    );
+
+                    results.push(Detection {
+                        label,
+                        confidence: prob,
+                        bbox,
+                    });
+                } else {
+                    filtered_by_class_prob += 1;
+                }
+            } else {
+                filtered_by_objectness += 1;
             }
         }
+
+        debug!(
+            "Filtered by objectness threshold: {}",
+            filtered_by_objectness
+        );
+        debug!(
+            "Filtered by class probability threshold: {}",
+            filtered_by_class_prob
+        );
+        debug!("Final valid detections: {}", results.len());
 
         Ok(results)
     }
