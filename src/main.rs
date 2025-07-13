@@ -113,8 +113,11 @@ fn main() -> Result<()> {
         }
 
         // Fetch image with retry logic
-        let image_url = image_fetcher.get_image_url().clone();
-        let max_retries = image_fetcher.get_max_retries();
+        let (image_url, max_retries) = {
+            let url = image_fetcher.get_image_url().clone();
+            let retries = image_fetcher.get_max_retries();
+            (url, retries)
+        };
         let image_data = match image_fetcher.fetch_with_retry(|alert_type| match alert_type {
             AlertType::SystemOffline => {
                 alert_service.send_system_offline_alert(&image_url, max_retries)
