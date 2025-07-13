@@ -1,6 +1,7 @@
 services:
   worker:
     image: printguardian
+    restart: always
     build:
       context: .
       dockerfile: ./Dockerfile
