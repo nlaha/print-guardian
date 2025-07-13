@@ -1,354 +1,215 @@
 use anyhow::Result;
-use argh::FromArgs;
-use darknet::{BBox, Image, Network};
-use std::{
-    fs::{self},
-    path::PathBuf,
-    thread,
-    time::Duration,
-};
+use log::{debug, error, info, warn};
+use std::{fs, path::PathBuf, thread, time::Duration};
 
-/// Command line arguments.
-#[derive(Debug, Clone, FromArgs)]
-struct Args {
-    /// the file including label names per class.
-    #[argh(option, default = "PathBuf::from(\"./labels.txt\")")]
-    label_file: PathBuf,
-    /// the model config file, which usually has a .cfg extension.
-    #[argh(option, default = "PathBuf::from(\"./model.cfg\")")]
-    model_cfg: PathBuf,
-    /// the model weights file, which usually has a .weights extension.
-    #[argh(option, default = "PathBuf::from(\"./model-weights.darknet\")")]
-    weights: PathBuf,
-    /// the output directory.
-    #[argh(option, default = "PathBuf::from(\"./output\")")]
-    output_dir: PathBuf,
-    /// the objectness threshold.
-    #[argh(option, default = "0.5")]
-    objectness_threshold: f32,
-    /// the class probability threshold.
-    #[argh(option, default = "0.5")]
-    class_prob_threshold: f32,
+// Module declarations
+mod alerts;
+mod config;
+mod detector;
+mod error;
+mod image_fetcher;
+mod printer;
 
-    /// the URL to fetch the input image from.
-    #[argh(
-        option,
-        default = "String::from(\"http://nlaha-voron-cam.private:1984/api/frame.jpeg?src=c920\")"
-    )]
-    image_url: String,
-}
+// Import our modules
+use alerts::AlertService;
+use config::{Config, constants};
+use detector::FailureDetector;
+use image_fetcher::{AlertType, ImageFetcher};
+use printer::PrinterService;
 
-fn fetch_image_with_retry(
-    image_url: &str,
-    retry_count: &mut u32,
-    max_retries: u32,
-    retry_delay_seconds: u64,
-    discord_webhook: &str,
-    disconnect_alert_sent: &mut bool,
-) -> Result<Vec<u8>> {
-    loop {
-        match reqwest::blocking::get(image_url) {
-            Ok(response) => {
-                if response.status().is_success() {
-                    match response.bytes() {
-                        Ok(data) => return Ok(data.to_vec()),
-                        Err(e) => {
-                            *retry_count += 1;
-                            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                            println!(
-                                "{}: Failed to read image data (attempt {}): {}",
-                                timestamp, *retry_count, e
-                            );
-                        }
-                    }
-                } else {
-                    *retry_count += 1;
-                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                    println!(
-                        "{}: Failed to fetch image, HTTP status {} (attempt {})",
-                        timestamp,
-                        response.status(),
-                        *retry_count
-                    );
-                }
-            }
-            Err(e) => {
-                *retry_count += 1;
-                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                println!(
-                    "{}: Network error fetching image (attempt {}): {}",
-                    timestamp, *retry_count, e
-                );
-            }
-        }
-
-        if *retry_count >= max_retries {
-            // Only send the disconnect alert if we haven't sent it already
-            if !*disconnect_alert_sent {
-                let alert_description = format!(
-                    "Failed to fetch image from {} after {} attempts. Print monitoring is offline!",
-                    image_url, max_retries
-                );
-
-                // Send alert to Discord webhook
-                if let Err(webhook_err) = send_discord_alert(
-                    discord_webhook,
-                    "CRITICAL: Print Monitoring Offline",
-                    &alert_description,
-                    0xFF0000, // Red color
-                    "🚨"
-                ) {
-                    println!("Failed to send Discord alert: {}", webhook_err);
-                } else {
-                    println!("Sent Discord alert for connection failure");
-                    *disconnect_alert_sent = true;
-                }
-            }
-
-            return Err(anyhow::anyhow!(
-                "Failed to fetch image after {} retries",
-                max_retries
-            ));
-        }
-
-        println!("Retrying in {} seconds...", retry_delay_seconds);
-        thread::sleep(Duration::from_secs(retry_delay_seconds));
-    }
-}
-
-/// Send a Discord alert with rich embed formatting
-fn send_discord_alert(webhook_url: &str, title: &str, description: &str, color: u32, emoji: &str) -> Result<()> {
-    let timestamp = chrono::Utc::now().to_rfc3339();
-    
-    let embed = serde_json::json!({
-        "embeds": [{
-            "title": format!("{} {}", emoji, title),
-            "description": description,
-            "color": color,
-            "timestamp": timestamp,
-            "footer": {
-                "text": "Print Guardian"
-            }
-        }]
-    });
-
-    let client = reqwest::blocking::Client::new();
-    let response = client
-        .post(webhook_url)
-        .header("Content-Type", "application/json")
-        .json(&embed)
-        .send()?;
-
-    if !response.status().is_success() {
-        return Err(anyhow::anyhow!(
-            "Failed to send Discord alert: HTTP {}",
-            response.status()
-        ));
-    }
-
-    Ok(())
-}
-
-fn pause_print(moonraker_api_url: &str) -> Result<()> {
-    let client = reqwest::blocking::Client::new();
-    let response = client
-        .post(format!("{}/printer/print/pause", moonraker_api_url))
-        .send()?;
-
-    if !response.status().is_success() {
-        return Err(anyhow::anyhow!(
-            "Failed to pause print: HTTP {}",
-            response.status()
-        ));
-    }
-
-    Ok(())
-}
-
+/// Print Guardian - AI-powered 3D print failure detection system.
+///
+/// This application monitors 3D printer cameras in real-time using machine learning
+/// to detect print failures such as spaghetti, layer shifts, warping, and other issues.
+/// When failures are detected, it can automatically pause the printer and send alerts
+/// via Discord webhooks.
+///
+/// # Features
+///
+/// * Real-time camera monitoring with retry logic
+/// * AI-powered print failure detection using YOLO/Darknet
+/// * Automatic printer pause on multiple failures
+/// * Discord webhook notifications with rich embeds
+/// * Configurable detection thresholds
+/// * Robust error handling and recovery
+///
+/// # Environment Variables
+///
+/// Required:
+/// * `IMAGE_URL` - Camera image URL for monitoring
+/// * `DISCORD_WEBHOOK` - Discord webhook URL for alerts
+/// * `MOONRAKER_API_URL` - Moonraker API endpoint for printer control
+///
+/// Optional (with defaults):
+/// * `LABEL_FILE` - Path to label file (default: "./labels.txt")
+/// * `MODEL_CFG` - Path to model config file (default: "./model.cfg")
+/// * `WEIGHTS_FILE` - Path to weights file (default: "./model-weights.darknet")
+/// * `OUTPUT_DIR` - Output directory (default: "./output")
+/// * `OBJECTNESS_THRESHOLD` - Objectness threshold (default: "0.5")
+/// * `CLASS_PROB_THRESHOLD` - Class probability threshold (default: "0.5")
+///
+/// # Usage
+///
+/// ```bash
+/// export IMAGE_URL="http://camera.local/image.jpg"
+/// export DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
+/// export MOONRAKER_API_URL="http://printer.local:7125"
+/// ./print-guardian
+/// ```
 fn main() -> Result<()> {
-    let Args {
-        label_file,
-        model_cfg,
-        weights,
-        output_dir,
-        objectness_threshold,
-        class_prob_threshold,
-        image_url,
-    } = argh::from_env();
+    // Initialize logger
+    env_logger::init();
 
-    // load discord webhook URL from environment variable
-    let discord_webhook =
-        std::env::var("DISCORD_WEBHOOK").expect("DISCORD_WEBHOOK environment variable must be set");
+    // Load configuration from environment variables
+    let config = Config::load().expect(
+        "Failed to load configuration. Please ensure all required environment variables are set.",
+    );
 
-    // get moonraker API URL from environment variable
-    let moonraker_api_url =
-        std::env::var("MOONRAKER_API_URL").expect("MOONRAKER_API_URL environment variable must be set");
-    println!("Using Moonraker API URL: {}", moonraker_api_url);
+    info!("Print Guardian starting...");
+    info!("Using Moonraker API URL: {}", config.moonraker_api_url);
+    info!("Monitoring camera: {}", config.image_url);
 
-    // download model weights to model-weights.darknet if it doesn't exist
-    if !weights.exists() {
-        let model_weights_url = "https://tsd-pub-static.s3.amazonaws.com/ml-models/model-weights-
-8be06cde4e.darknet";
-        let response = reqwest::blocking::get(model_weights_url)?;
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Failed to download model weights from {}: {}",
-                model_weights_url,
-                response.status()
-            ));
-        }
-        let model_weights_data = response.bytes()?;
-        fs::write(&weights, model_weights_data)?;
-    }
+    // Initialize services
+    let alert_service = AlertService::new(config.discord_webhook.clone());
+    let printer_service = PrinterService::new(config.moonraker_api_url.clone());
 
-    // Load network & labels
-    let object_labels = std::fs::read_to_string(label_file)?
-        .lines()
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-    let mut net = Network::load(model_cfg, Some(weights), false)?;
+    // Download model weights if needed
+    FailureDetector::ensure_weights_downloaded(&config.weights, constants::MODEL_WEIGHTS_URL)?;
 
-    let mut retry_count = 0;
-    let mut disconnect_alert_sent = false;
-    const MAX_RETRIES: u32 = 15;
-    const RETRY_DELAY_SECONDS: u64 = 15;
+    // Initialize failure detector
+    let mut detector = FailureDetector::new(
+        config.model_cfg.clone(),
+        config.weights.clone(),
+        config.label_file.clone(),
+        config.objectness_threshold,
+        config.class_prob_threshold,
+    )?;
 
+    // Initialize image fetcher
+    let mut image_fetcher = ImageFetcher::new(
+        config.image_url.clone(),
+        constants::MAX_RETRIES,
+        constants::RETRY_DELAY_SECONDS,
+    );
+
+    // Create output directory
+    fs::create_dir_all(&config.output_dir)?;
+
+    // Main monitoring loop state
     let mut print_failures = 0;
 
+    info!("Print Guardian initialized successfully. Starting monitoring loop...");
+
     loop {
-        // download input image from image_url with retry logic
-        let image_data = match fetch_image_with_retry(
-            &image_url,
-            &mut retry_count,
-            MAX_RETRIES,
-            RETRY_DELAY_SECONDS,
-            &discord_webhook,
-            &mut disconnect_alert_sent,
-        ) {
-            Ok(data) => {
-                // If we successfully got data after being disconnected, send recovery message
-                if disconnect_alert_sent {
-                    if let Err(webhook_err) = send_discord_alert(
-                        &discord_webhook,
-                        "RECOVERY: Print Monitoring Back Online",
-                        "Image fetch successful after connection issues.",
-                        0x00FF00, // Green color
-                        "✅"
-                    ) {
-                        println!("Failed to send Discord recovery alert: {}", webhook_err);
-                    } else {
-                        println!("Sent Discord recovery alert");
-                    }
-                    disconnect_alert_sent = false;
-                }
-                retry_count = 0; // Reset retry count on success
-                data
-            }
+        // First check if the printer is online
+        if let Err(e) = printer_service.check_printer_status() {
+            warn!(
+                "Printer is offline, retrying in {} seconds: {}",
+                constants::RETRY_DELAY_SECONDS,
+                e
+            );
+            thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+            continue;
+        }
+
+        // Fetch image with retry logic
+        let image_data = match image_fetcher.fetch_with_retry(|alert_type| match alert_type {
+            AlertType::SystemOffline => alert_service.send_system_offline_alert(
+                image_fetcher.get_image_url(),
+                image_fetcher.get_max_retries(),
+            ),
+            AlertType::SystemRecovery => alert_service.send_system_recovery_alert(),
+        }) {
+            Ok(data) => data,
             Err(e) => {
-                println!("Failed to fetch image after {} retries: {}", MAX_RETRIES, e);
-                thread::sleep(Duration::from_secs(RETRY_DELAY_SECONDS));
+                error!("Failed to fetch image: {}", e);
+                thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
                 continue;
             }
         };
 
-        // save to file
+        // Save image to disk for processing
         let image_path = PathBuf::from("input_file.jpg");
-        fs::write(&image_path, image_data)?;
+        if let Err(e) = fs::write(&image_path, image_data) {
+            error!("Failed to save image: {}", e);
+            continue;
+        }
 
-        // prepare data
-        let image_path = PathBuf::from("input_file.jpg");
-        let image = Image::open(&image_path)?;
-        let image_file_name = image_path
-            .file_name()
-            .expect(&format!("{} is not a valid file", image_path.display()));
-        let curr_output_dir = output_dir.join(image_file_name);
-        fs::create_dir_all(&curr_output_dir)?;
-
-        // Run object detection
-        let detections = net.predict(&image, 0.25, 0.5, 0.45, true);
-
-        // print detection probabilities with timestamp
+        // Log detection probability
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-        println!(
-            "{}: Detection probability: {}",
-            timestamp,
-            detections
-                .iter()
-                // get first class probabilities
-                .map(|det| det.probabilities().get(0).map_or(0.0, |p| *p))
-                .collect::<Vec<_>>()
-                // get max probabilities
-                .iter()
-                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-                .map_or("No detections".to_string(), |&p| format!(
-                    "{:.2}%",
-                    p * 100.0
-                ))
-        );
+        match detector.get_max_detection_probability(&image_path) {
+            Ok(prob_str) => {
+                debug!("{}: Detection probability: {}", timestamp, prob_str);
+            }
+            Err(e) => {
+                error!("{}: Failed to get detection probability: {}", timestamp, e);
+                continue;
+            }
+        }
 
-        detections
-        .iter()
-        .filter(|det| det.objectness() > objectness_threshold)
-        .flat_map(|det| {
-            det.best_class(Some(class_prob_threshold))
-                .map(|(class_index, prob)| (det, prob, &object_labels[class_index]))
-        })
-        .enumerate()
-        .for_each(|(_index, (det, prob, label))| {
-            let bbox = det.bbox();
-            let BBox { x, y, w, h } = bbox;
+        // Run failure detection
+        let detections = match detector.detect_failures(&image_path) {
+            Ok(detections) => detections,
+            Err(e) => {
+                error!("{}: Detection failed: {}", timestamp, e);
+                continue;
+            }
+        };
 
-            // if prob > 0.5 send an alert to the discord webhook
-
-            if prob > 0.5 {
-                println!(
-                    "{}: Detected {} print failure with {:.2}% confidence at x: {}, y: {}, w: {}, h: {}",
-                    timestamp, label, prob * 100.0, x, y, w, h
+        // Process detections
+        for detection in detections {
+            if detection.exceeds_threshold(constants::ALERT_PROBABILITY_THRESHOLD) {
+                warn!(
+                    "{}: Detected {} print failure with {:.2}% confidence at x: {:.1}, y: {:.1}, w: {:.1}, h: {:.1}",
+                    timestamp,
+                    detection.label,
+                    detection.confidence_percent(),
+                    detection.center_x(),
+                    detection.center_y(),
+                    detection.width(),
+                    detection.height()
                 );
-                
-                let alert_description = format!(
-                    "Detected **{}** print failure with **{:.2}%** confidence\n\n**Location:**\n• X: {:.1}\n• Y: {:.1}\n• Width: {:.1}\n• Height: {:.1}",
-                    label, prob * 100.0, x, y, w, h
-                );
-                
+
                 print_failures += 1;
 
-                // Pause the print if we detect more than 3 print failures
-                if print_failures > 3 {
-                    if let Err(pause_err) = pause_print(&moonraker_api_url) {
-                        println!("Failed to pause print: {}", pause_err);
-                    } else {
-                        send_discord_alert(
-                            &discord_webhook,
-                            "Print Paused Due to Multiple Failures",
-                            &format!(
-                                "Print has been paused after detecting {} print failures. Please check the printer.",
-                                print_failures
-                            ),
-                            0xFF0000, // Red color
-                            "🚨"
-                        ).unwrap_or_else(|e| println!("Failed to send pause alert: {}", e));
-                        println!("Print paused due to multiple failures. Alert sent to Discord.");
-
-                        print_failures = 0; // Reset after pausing
+                // Check if we should pause the printer
+                if print_failures > constants::PRINT_FAILURE_THRESHOLD {
+                    match printer_service.pause_print() {
+                        Ok(()) => {
+                            if let Err(e) = alert_service.send_print_pause_alert(print_failures) {
+                                error!("Failed to send pause alert: {}", e);
+                            } else {
+                                info!(
+                                    "Print paused due to multiple failures. Alert sent to Discord."
+                                );
+                            }
+                            print_failures = 0; // Reset after pausing
+                        }
+                        Err(e) => {
+                            error!("Failed to pause print: {}", e);
+                        }
                     }
                 }
 
-                if let Err(webhook_err) = send_discord_alert(
-                    &discord_webhook,
-                    "Print Failure Detected",
-                    &alert_description,
-                    0xFFA500, // Orange color
-                    "⚠️"
+                // Send failure alert
+                if let Err(e) = alert_service.send_print_failure_alert(
+                    &detection.label,
+                    detection.confidence_percent(),
+                    detection.center_x(),
+                    detection.center_y(),
+                    detection.width(),
+                    detection.height(),
                 ) {
-                    println!("Failed to send Discord print failure alert: {}", webhook_err);
+                    error!("Failed to send Discord print failure alert: {}", e);
                 } else {
-                    println!("Sent Discord print failure alert");
+                    info!("Sent Discord print failure alert");
                 }
             } else {
-                println!("{}: No significant print failure detected.", timestamp);
+                debug!("{}: No significant print failure detected.", timestamp);
             }
-        });
+        }
+
+        // Small delay before next iteration
+        thread::sleep(Duration::from_secs(1));
     }
-    Ok(())
 }
