@@ -1,3 +1,4 @@
 /target
 model-weights.darknet
 input_file.jpg
+**/*.env
