@@ -4,6 +4,8 @@ use darknet::{BBox, Image, Network};
 use std::{
     fs::{self},
     path::PathBuf,
+    thread,
+    time::Duration,
 };
 
 /// Command line arguments.
@@ -34,6 +36,80 @@ struct Args {
         default = "String::from(\"http://192.168.1.194:1984/api/frame.jpeg?src=picam\")"
     )]
     image_url: String,
+}
+
+fn fetch_image_with_retry(
+    image_url: &str,
+    retry_count: &mut u32,
+    max_retries: u32,
+    retry_delay_seconds: u64,
+    discord_webhook: &str,
+) -> Result<Vec<u8>> {
+    loop {
+        match reqwest::blocking::get(image_url) {
+            Ok(response) => {
+                if response.status().is_success() {
+                    match response.bytes() {
+                        Ok(data) => return Ok(data.to_vec()),
+                        Err(e) => {
+                            *retry_count += 1;
+                            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                            println!(
+                                "{}: Failed to read image data (attempt {}): {}",
+                                timestamp, *retry_count, e
+                            );
+                        }
+                    }
+                } else {
+                    *retry_count += 1;
+                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                    println!(
+                        "{}: Failed to fetch image, HTTP status {} (attempt {})",
+                        timestamp,
+                        response.status(),
+                        *retry_count
+                    );
+                }
+            }
+            Err(e) => {
+                *retry_count += 1;
+                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                println!(
+                    "{}: Network error fetching image (attempt {}): {}",
+                    timestamp, *retry_count, e
+                );
+            }
+        }
+
+        if *retry_count >= max_retries {
+            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+            let alert_message = format!(
+                "[{}] CRITICAL: Failed to fetch image from {} after {} attempts. Print monitoring is offline!",
+                timestamp, image_url, max_retries
+            );
+
+            // Send alert to Discord webhook
+            let client = reqwest::blocking::Client::new();
+            if let Err(webhook_err) = client
+                .post(discord_webhook)
+                .header("Content-Type", "application/json")
+                .body(format!(r#"{{"content": "{}"}}"#, alert_message))
+                .send()
+            {
+                println!("Failed to send Discord alert: {}", webhook_err);
+            } else {
+                println!("Sent Discord alert: {}", alert_message);
+            }
+
+            return Err(anyhow::anyhow!(
+                "Failed to fetch image after {} retries",
+                max_retries
+            ));
+        }
+
+        println!("Retrying in {} seconds...", retry_delay_seconds);
+        thread::sleep(Duration::from_secs(retry_delay_seconds));
+    }
 }
 
 fn main() -> Result<()> {
@@ -74,19 +150,31 @@ fn main() -> Result<()> {
         .collect::<Vec<_>>();
     let mut net = Network::load(model_cfg, Some(weights), false)?;
 
+    let mut retry_count = 0;
+    const MAX_RETRIES: u32 = 15;
+    const RETRY_DELAY_SECONDS: u64 = 15;
+
     loop {
-        // download input image from image_url
-        let response = reqwest::blocking::get(&image_url)?;
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Failed to fetch image from {}: {}",
-                image_url,
-                response.status()
-            ));
-        }
+        // download input image from image_url with retry logic
+        let image_data = match fetch_image_with_retry(
+            &image_url,
+            &mut retry_count,
+            MAX_RETRIES,
+            RETRY_DELAY_SECONDS,
+            &discord_webhook,
+        ) {
+            Ok(data) => {
+                retry_count = 0; // Reset retry count on success
+                data
+            }
+            Err(e) => {
+                println!("Failed to fetch image after {} retries: {}", MAX_RETRIES, e);
+                thread::sleep(Duration::from_secs(RETRY_DELAY_SECONDS));
+                continue;
+            }
+        };
 
         // save to file
-        let image_data = response.bytes()?;
         let image_path = PathBuf::from("input_file.jpg");
         fs::write(&image_path, image_data)?;
 
@@ -132,7 +220,7 @@ fn main() -> Result<()> {
                 .map(|(class_index, prob)| (det, prob, &object_labels[class_index]))
         })
         .enumerate()
-        .for_each(|(index, (det, prob, label))| {
+        .for_each(|(_index, (det, prob, label))| {
             let bbox = det.bbox();
             let BBox { x, y, w, h } = bbox;
 
