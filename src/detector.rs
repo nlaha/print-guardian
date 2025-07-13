@@ -149,6 +149,7 @@ impl FailureDetector {
     /// ```
     pub fn detect_failures(&mut self, image_path: &PathBuf) -> Result<Vec<Detection>> {
         let image = Image::open(image_path)?;
+        debug!("Loaded image: {}", image_path.display());
 
         // Run object detection with NMS parameters
         let detections = self.network.predict(&image, 0.25, 0.5, 0.45, true);
