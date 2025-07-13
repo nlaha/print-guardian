@@ -1,0 +1,8 @@
+services:
+  printguardian:
+    image: printguardian
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    environment:
+      - DISCORD_WEBHOOK=your_discord_webhook_url_here

@@ -1,0 +1,12 @@
+[package]
+name = "print-guardian"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+argh = "0.1.13"
+chrono = "0.4.41"
+darknet = "0.4.0"
+image = "0.25.6"
+reqwest = { version = "0.12.22", features = ["blocking", "json"] }
