@@ -33,7 +33,7 @@ struct Args {
     /// the URL to fetch the input image from.
     #[argh(
         option,
-        default = "String::from(\"http://192.168.1.194:1984/api/frame.jpeg?src=picam\")"
+        default = "String::from(\"http://nlaha-voron-cam.private:1984/api/frame.jpeg?src=c920\")"
     )]
     image_url: String,
 }
