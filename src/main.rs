@@ -57,10 +57,15 @@ use printer::PrinterService;
 /// ./print-guardian
 /// ```
 fn main() -> Result<()> {
-    // Initialize logger to output to stdout with info level by default
+    // Initialize logger to output to stdout, using RUST_LOG env var or info level by default
     env_logger::Builder::from_default_env()
         .target(env_logger::Target::Stdout)
-        .filter_level(log::LevelFilter::Info)
+        .filter_level(
+            std::env::var("RUST_LOG")
+                .ok()
+                .and_then(|level| level.parse().ok())
+                .unwrap_or(log::LevelFilter::Info),
+        )
         .init();
 
     // Load configuration from environment variables
