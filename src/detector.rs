@@ -146,8 +146,6 @@ impl FailureDetector {
         debug!("Raw detections count: {}", detections.len());
 
         let mut results = Vec::new();
-        let mut filtered_by_objectness = 0;
-        let mut filtered_by_class_prob = 0;
 
         // Process detections and filter by thresholds
         for det in detections.iter() {
@@ -156,43 +154,37 @@ impl FailureDetector {
                 det.objectness(),
                 self.objectness_threshold
             );
+            debug!(
+                "Detection class probabilities: {:?}",
+                det.probabilities()
+                    .iter()
+                    .map(f32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
 
             if det.objectness() > self.objectness_threshold {
-                if let Some((class_index, prob)) = det.best_class(Some(self.class_prob_threshold)) {
-                    let bbox = *det.bbox();
+                // Get the best class without threshold filtering for debugging
+                if let Some((class_index, prob)) = det.best_class(None) {
                     let label = self
                         .labels
                         .get(class_index)
                         .unwrap_or(&"unknown".to_string())
                         .clone();
 
-                    debug!(
-                        "Valid detection - Class: {} (index: {}), Probability: {:.4} (threshold: {:.4})",
-                        label, class_index, prob, self.class_prob_threshold
-                    );
+                    // Only add to results if it meets the threshold
+                    if prob > self.class_prob_threshold {
+                        let bbox = *det.bbox();
 
-                    results.push(Detection {
-                        label,
-                        confidence: prob,
-                        bbox,
-                    });
-                } else {
-                    filtered_by_class_prob += 1;
+                        results.push(Detection {
+                            label,
+                            confidence: prob,
+                            bbox,
+                        });
+                    }
                 }
-            } else {
-                filtered_by_objectness += 1;
             }
         }
-
-        debug!(
-            "Filtered by objectness threshold: {}",
-            filtered_by_objectness
-        );
-        debug!(
-            "Filtered by class probability threshold: {}",
-            filtered_by_class_prob
-        );
-        debug!("Final valid detections: {}", results.len());
 
         Ok(results)
     }
