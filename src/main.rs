@@ -44,6 +44,7 @@ fn fetch_image_with_retry(
     max_retries: u32,
     retry_delay_seconds: u64,
     discord_webhook: &str,
+    disconnect_alert_sent: &mut bool,
 ) -> Result<Vec<u8>> {
     loop {
         match reqwest::blocking::get(image_url) {
@@ -82,23 +83,27 @@ fn fetch_image_with_retry(
         }
 
         if *retry_count >= max_retries {
-            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-            let alert_message = format!(
-                "[{}] CRITICAL: Failed to fetch image from {} after {} attempts. Print monitoring is offline!",
-                timestamp, image_url, max_retries
-            );
+            // Only send the disconnect alert if we haven't sent it already
+            if !*disconnect_alert_sent {
+                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                let alert_message = format!(
+                    "[{}] CRITICAL: Failed to fetch image from {} after {} attempts. Print monitoring is offline!",
+                    timestamp, image_url, max_retries
+                );
 
-            // Send alert to Discord webhook
-            let client = reqwest::blocking::Client::new();
-            if let Err(webhook_err) = client
-                .post(discord_webhook)
-                .header("Content-Type", "application/json")
-                .body(format!(r#"{{"content": "{}"}}"#, alert_message))
-                .send()
-            {
-                println!("Failed to send Discord alert: {}", webhook_err);
-            } else {
-                println!("Sent Discord alert: {}", alert_message);
+                // Send alert to Discord webhook
+                let client = reqwest::blocking::Client::new();
+                if let Err(webhook_err) = client
+                    .post(discord_webhook)
+                    .header("Content-Type", "application/json")
+                    .body(format!(r#"{{"content": "{}"}}"#, alert_message))
+                    .send()
+                {
+                    println!("Failed to send Discord alert: {}", webhook_err);
+                } else {
+                    println!("Sent Discord alert: {}", alert_message);
+                    *disconnect_alert_sent = true;
+                }
             }
 
             return Err(anyhow::anyhow!(
@@ -151,6 +156,7 @@ fn main() -> Result<()> {
     let mut net = Network::load(model_cfg, Some(weights), false)?;
 
     let mut retry_count = 0;
+    let mut disconnect_alert_sent = false;
     const MAX_RETRIES: u32 = 15;
     const RETRY_DELAY_SECONDS: u64 = 15;
 
@@ -162,8 +168,29 @@ fn main() -> Result<()> {
             MAX_RETRIES,
             RETRY_DELAY_SECONDS,
             &discord_webhook,
+            &mut disconnect_alert_sent,
         ) {
             Ok(data) => {
+                // If we successfully got data after being disconnected, send recovery message
+                if disconnect_alert_sent {
+                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                    let recovery_message = format!(
+                        "[{}] RECOVERY: Print monitoring is back online! Image fetch successful after connection issues.",
+                        timestamp
+                    );
+                    let client = reqwest::blocking::Client::new();
+                    if let Err(webhook_err) = client
+                        .post(&discord_webhook)
+                        .header("Content-Type", "application/json")
+                        .body(format!(r#"{{"content": "{}"}}"#, recovery_message))
+                        .send()
+                    {
+                        println!("Failed to send Discord recovery alert: {}", webhook_err);
+                    } else {
+                        println!("Sent Discord recovery alert: {}", recovery_message);
+                    }
+                    disconnect_alert_sent = false;
+                }
                 retry_count = 0; // Reset retry count on success
                 data
             }
