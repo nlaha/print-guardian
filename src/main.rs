@@ -138,9 +138,7 @@ fn main() -> Result<()> {
 
                 if last_status_update != state {
                     // send the status of the print to discord with the current processed image
-                    if let Err(e) =
-                        alert_service.send_printer_status_alert(&data, Some(&processed_image_data))
-                    {
+                    if let Err(e) = alert_service.send_printer_status_alert(&data, None) {
                         error!("Failed to send printer status alert: {}", e);
                         thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
                         continue;
