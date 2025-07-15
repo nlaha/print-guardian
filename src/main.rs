@@ -133,11 +133,6 @@ fn main() -> Result<()> {
                 let state = data["result"]["status"]["print_stats"]["state"]
                     .as_str()
                     .unwrap_or("unknown");
-                if state != "printing" {
-                    warn!("Printer is not currently printing. Skipping detection.");
-                    thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
-                    continue;
-                }
 
                 if last_status_update != state {
                     // send the status of the print to discord
@@ -147,7 +142,14 @@ fn main() -> Result<()> {
                         continue;
                     } else {
                         info!("Printer status alert sent successfully");
+                        last_status_update = state.to_string();
                     }
+                }
+
+                if state != "printing" {
+                    warn!("Printer is not currently printing. Skipping detection.");
+                    thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                    continue;
                 }
             }
             Err(e) => {

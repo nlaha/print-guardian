@@ -131,21 +131,20 @@ impl AlertService {
     }
 
     pub fn send_printer_status_alert(&self, status: &serde_json::Value) -> Result<()> {
-        let stats = status["result"]["status"]["print_stats"]
-            .as_str()
-            .unwrap_or("unknown");
+        let stats = &status["result"]["status"]["print_stats"];
 
         let description = format!(
-            """
+            "
             Current printer state: **{}**
             **Print Stats:**
             • Filament Used: {}mm
             • Print Duration: {}
-            """,
+            ",
             stats["state"].as_str().unwrap_or("unknown"),
             stats["filament_used"].as_f64().unwrap_or(0.0),
             // convert seconds to a human-readable format with hours and minutes
-            format!("{}h {}m {}s",
+            format!(
+                "{}h {}m {}s",
                 stats["print_duration"].as_u64().unwrap_or(0) / 3600,
                 (stats["print_duration"].as_u64().unwrap_or(0) % 3600) / 60,
                 stats["print_duration"].as_u64().unwrap_or(0) % 60
