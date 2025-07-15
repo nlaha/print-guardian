@@ -66,6 +66,13 @@ pub struct Config {
     /// that allows the application to pause prints when failures are detected.
     /// Environment variable: `MOONRAKER_API_URL`
     pub moonraker_api_url: String,
+
+    /// Whether to flip the image horizontally after fetching.
+    ///
+    /// This is useful for cameras that are mounted in a way that produces
+    /// horizontally mirrored images. Set to "true" to enable horizontal flipping.
+    /// Environment variable: `FLIP_IMAGE`
+    pub flip_image: bool,
 }
 
 impl Config {
@@ -83,6 +90,7 @@ impl Config {
     /// - `IMAGE_URL`: Camera image URL (required)
     /// - `DISCORD_WEBHOOK`: Discord webhook URL (required)
     /// - `MOONRAKER_API_URL`: Moonraker API URL (required)
+    /// - `FLIP_IMAGE`: Whether to flip images horizontally (default: "false")
     ///
     /// # Examples
     ///
@@ -124,6 +132,11 @@ impl Config {
         let moonraker_api_url = std::env::var("MOONRAKER_API_URL")
             .map_err(|_| "MOONRAKER_API_URL environment variable is required")?;
 
+        let flip_image = std::env::var("FLIP_IMAGE")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .map_err(|e| format!("Invalid FLIP_IMAGE (must be 'true' or 'false'): {}", e))?;
+
         Ok(Config {
             label_file,
             model_cfg,
@@ -134,6 +147,7 @@ impl Config {
             image_url,
             discord_webhook,
             moonraker_api_url,
+            flip_image,
         })
     }
 }

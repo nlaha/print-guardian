@@ -1,4 +1,5 @@
 use anyhow::Result;
+use reqwest::blocking::multipart;
 use serde_json::json;
 
 /// Discord alert service for sending rich embed notifications.
@@ -95,18 +96,20 @@ impl AlertService {
     /// Send a print failure alert with standardized formatting.
     ///
     /// Convenience method for sending print failure notifications with
-    /// consistent formatting and color scheme.
+    /// consistent formatting and color scheme. Optionally includes an
+    /// annotated image showing the detected failure area.
     ///
     /// # Arguments
     ///
     /// * `label` - The type of failure detected (e.g., "spaghetti", "layer_shift")
     /// * `confidence` - Confidence percentage (0.0 to 100.0)
     /// * `x`, `y`, `w`, `h` - Bounding box coordinates and dimensions
+    /// * `annotated_image` - Optional annotated image data (JPEG format)
     ///
     /// # Examples
     ///
     /// ```rust
-    /// alert_service.send_print_failure_alert("spaghetti", 85.5, 120.0, 80.0, 50.0, 30.0)?;
+    /// alert_service.send_print_failure_alert("spaghetti", 85.5, 120.0, 80.0, 50.0, 30.0, None)?;
     /// ```
     pub fn send_print_failure_alert(
         &self,
@@ -116,21 +119,40 @@ impl AlertService {
         y: f32,
         w: f32,
         h: f32,
+        annotated_image: Option<&[u8]>,
     ) -> Result<()> {
         let description = format!(
             "Detected **{}** print failure with **{:.2}%** confidence\n\n**Location:**\n• X: {:.1}\n• Y: {:.1}\n• Width: {:.1}\n• Height: {:.1}",
             label, confidence, x, y, w, h
         );
 
-        self.send_alert(
-            "Print Failure Detected",
-            &description,
-            0xFFA500, // Orange color
-            "⚠️",
-        )
+        // If we have an annotated image, send it with the alert
+        if let Some(image_data) = annotated_image {
+            let filename = format!("failure_detection_{}.jpg", chrono::Utc::now().timestamp());
+            self.send_alert_with_image(
+                "Print Failure Detected",
+                &description,
+                0xFFA500, // Orange color
+                "⚠️",
+                image_data,
+                &filename,
+            )
+        } else {
+            // Send regular alert without image
+            self.send_alert(
+                "Print Failure Detected",
+                &description,
+                0xFFA500, // Orange color
+                "⚠️",
+            )
+        }
     }
 
-    pub fn send_printer_status_alert(&self, status: &serde_json::Value) -> Result<()> {
+    pub fn send_printer_status_alert(
+        &self,
+        status: &serde_json::Value,
+        image_data: Option<&[u8]>,
+    ) -> Result<()> {
         let stats = &status["result"]["status"]["print_stats"];
 
         let description = format!(
@@ -138,12 +160,12 @@ impl AlertService {
             Current file: **{}**
             Current printer state: **{}**
             **Print Stats:**
-            • Filament Used: {}mm
+            • Filament Used: {:.2}m
             • Print Duration: {}
             ",
-            stats["file_name"].as_str().unwrap_or("Unknown"),
+            stats["filename"].as_str().unwrap_or("Unknown"),
             stats["state"].as_str().unwrap_or("unknown"),
-            stats["filament_used"].as_f64().unwrap_or(0.0),
+            stats["filament_used"].as_f64().unwrap_or(0.0) / 1000.0, // convert mm to meters
             // convert seconds to a human-readable format with hours and minutes
             format!(
                 "{}h {}m {}s",
@@ -153,14 +175,30 @@ impl AlertService {
             )
         );
 
-        self.send_alert(
-            status["result"]["status"]["webhooks"]["state_message"]
-                .as_str()
-                .unwrap_or("Printer Status Update"),
-            &description,
-            0x0099FF, // Blue color
-            "ℹ️",
-        )
+        let title = status["result"]["status"]["webhooks"]["state_message"]
+            .as_str()
+            .unwrap_or("Printer Status Update");
+
+        // If we have an image, send it with the alert
+        if let Some(image_bytes) = image_data {
+            let filename = format!("printer_status_{}.jpg", chrono::Utc::now().timestamp());
+            self.send_alert_with_image(
+                title,
+                &description,
+                0x0099FF, // Blue color
+                "ℹ️",
+                image_bytes,
+                &filename,
+            )
+        } else {
+            // Send regular alert without image
+            self.send_alert(
+                title,
+                &description,
+                0x0099FF, // Blue color
+                "ℹ️",
+            )
+        }
     }
 
     /// Send a critical system offline alert.
@@ -206,18 +244,106 @@ impl AlertService {
     /// # Arguments
     ///
     /// * `failure_count` - Number of failures that triggered the pause
-    pub fn send_print_pause_alert(&self, failure_count: u32) -> Result<()> {
+    /// * `annotated_image` - Optional annotated image showing the failures
+    pub fn send_print_pause_alert(
+        &self,
+        failure_count: u32,
+        annotated_image: Option<&[u8]>,
+    ) -> Result<()> {
         let description = format!(
             "Print has been paused after detecting {} print failures. Please check the printer.",
             failure_count
         );
 
-        self.send_alert(
-            "Print Paused Due to Multiple Failures",
-            &description,
-            0xFF0000, // Red color
-            "🚨",
-        )
+        // If we have an annotated image, send it with the alert
+        if let Some(image_data) = annotated_image {
+            let filename = format!("print_pause_{}.jpg", chrono::Utc::now().timestamp());
+            self.send_alert_with_image(
+                "Print Paused Due to Multiple Failures",
+                &description,
+                0xFF0000, // Red color
+                "🚨",
+                image_data,
+                &filename,
+            )
+        } else {
+            // Send regular alert without image
+            self.send_alert(
+                "Print Paused Due to Multiple Failures",
+                &description,
+                0xFF0000, // Red color
+                "🚨",
+            )
+        }
+    }
+
+    /// Send a Discord alert with an attached image.
+    ///
+    /// Creates a rich embed message with an attached image file.
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - The title of the alert
+    /// * `description` - The main content of the alert (supports Markdown)
+    /// * `color` - The color of the embed sidebar (as a hex value)
+    /// * `emoji` - An emoji to display with the title
+    /// * `image_data` - JPEG image data to attach
+    /// * `filename` - Name for the attached image file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The HTTP request fails
+    /// - The Discord API returns an error status
+    /// - JSON serialization fails
+    pub fn send_alert_with_image(
+        &self,
+        title: &str,
+        description: &str,
+        color: u32,
+        emoji: &str,
+        image_data: &[u8],
+        filename: &str,
+    ) -> Result<()> {
+        let timestamp = chrono::Utc::now().to_rfc3339();
+
+        let embed = json!({
+            "embeds": [{
+                "title": format!("{} {}", emoji, title),
+                "description": description,
+                "color": color,
+                "timestamp": timestamp,
+                "footer": {
+                    "text": "Print Guardian"
+                },
+                "image": {
+                    "url": format!("attachment://{}", filename)
+                }
+            }]
+        });
+
+        let client = reqwest::blocking::Client::new();
+
+        // Create multipart form with JSON payload and image
+        let form = multipart::Form::new()
+            .text("payload_json", embed.to_string())
+            .part(
+                "files[0]",
+                multipart::Part::bytes(image_data.to_vec())
+                    .file_name(filename.to_string())
+                    .mime_str("image/jpeg")?,
+            );
+
+        let response = client.post(&self.webhook_url).multipart(form).send()?;
+
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Failed to send Discord alert with image: HTTP {}",
+                response.status()
+            ));
+        }
+
+        Ok(())
     }
 }
 

@@ -2,6 +2,13 @@ use anyhow::Result;
 use log::{error, info, warn};
 use std::{thread, time::Duration};
 
+// Add imports for image processing and annotation
+use darknet::Image;
+use imageproc::drawing::draw_hollow_rect_mut;
+use imageproc::rect::Rect;
+
+use crate::detector::Detection;
+
 /// Image fetching service with retry logic and error handling.
 ///
 /// This service handles downloading images from camera endpoints with robust
@@ -185,6 +192,151 @@ impl ImageFetcher {
     /// Get the maximum retry count.
     pub fn get_max_retries(&self) -> u32 {
         self.max_retries
+    }
+
+    /// Convert fetched image bytes directly to a darknet Image.
+    ///
+    /// This method bypasses disk I/O by loading the image data directly
+    /// from memory and converting it to a darknet Image object.
+    ///
+    /// # Arguments
+    ///
+    /// * `image_data` - Raw image bytes (JPEG, PNG, etc.)
+    ///
+    /// # Returns
+    ///
+    /// Returns a darknet Image object ready for inference.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Image format is not supported
+    /// - Image data is corrupted
+    /// - Memory allocation fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let image_data = fetcher.fetch_with_retry(alert_callback)?;
+    /// let darknet_image = ImageFetcher::bytes_to_darknet_image(&image_data)?;
+    /// let detections = detector.detect_failures_from_image(&darknet_image)?;
+    /// ```
+    pub fn bytes_to_darknet_image(image_data: &[u8]) -> Result<Image> {
+        // Load image from memory using the image crate
+        let dynamic_image: image::DynamicImage = image::load_from_memory(image_data)?;
+
+        // Convert DynamicImage to darknet Image using the explicit From impl
+        // Use the fully qualified type to ensure correct trait resolution
+        let darknet_image = Image::from(dynamic_image);
+
+        Ok(darknet_image)
+    }
+
+    /// Annotate an image with detection boxes and labels.
+    ///
+    /// This function draws yellow bounding boxes around detected print failures
+    /// and adds labels with confidence scores.
+    ///
+    /// # Arguments
+    ///
+    /// * `image_data` - Raw image bytes
+    /// * `detections` - Vector of detection results to draw
+    /// * `image_width` - Width of the original image
+    /// * `image_height` - Height of the original image
+    ///
+    /// # Returns
+    ///
+    /// Annotated image as JPEG bytes
+    pub fn annotate_image_with_detections(
+        image_data: &[u8],
+        detections: &[Detection],
+        image_width: u32,
+        image_height: u32,
+    ) -> Result<Vec<u8>> {
+        // Load the image from memory
+        let dynamic_image = image::load_from_memory(image_data)?;
+
+        // Convert to RGB if it's not already
+        let mut rgb_image = dynamic_image.to_rgb8();
+
+        // Define yellow color for bounding boxes
+        let yellow = image::Rgb([255, 255, 0]);
+
+        // Draw detection boxes
+        for detection in detections {
+            // Convert darknet coordinates (center + size) to pixel coordinates (top-left + size)
+            let center_x = detection.center_x() * image_width as f32;
+            let center_y = detection.center_y() * image_height as f32;
+            let width = detection.width() * image_width as f32;
+            let height = detection.height() * image_height as f32;
+
+            // Calculate top-left corner
+            let x = (center_x - width / 2.0).max(0.0) as i32;
+            let y = (center_y - height / 2.0).max(0.0) as i32;
+            let w = width as u32;
+            let h = height as u32;
+
+            // Draw the bounding box with thick yellow border
+            for thickness in 0..3 {
+                let thick_x = x - thickness;
+                let thick_y = y - thickness;
+                let thick_w = w + 2 * thickness as u32;
+                let thick_h = h + 2 * thickness as u32;
+
+                if thick_x >= 0 && thick_y >= 0 {
+                    let rect = Rect::at(thick_x, thick_y).of_size(
+                        thick_w.min(image_width.saturating_sub(thick_x as u32)),
+                        thick_h.min(image_height.saturating_sub(thick_y as u32)),
+                    );
+                    draw_hollow_rect_mut(&mut rgb_image, rect, yellow);
+                }
+            }
+        }
+
+        // Convert back to dynamic image and encode as JPEG
+        let dynamic_annotated = image::DynamicImage::ImageRgb8(rgb_image);
+        let mut buffer = Vec::new();
+        let mut cursor = std::io::Cursor::new(&mut buffer);
+
+        dynamic_annotated.write_to(&mut cursor, image::ImageFormat::Jpeg)?;
+
+        Ok(buffer)
+    }
+
+    /// Apply image transformations (e.g., flipping) to the fetched image.
+    ///
+    /// # Arguments
+    ///
+    /// * `image_data` - Raw image bytes
+    /// * `flip_horizontal` - Whether to flip the image horizontally
+    ///
+    /// # Returns
+    ///
+    /// Transformed image as bytes in the same format as the input
+    pub fn apply_image_transformations(
+        image_data: &[u8],
+        flip_horizontal: bool,
+    ) -> Result<Vec<u8>> {
+        if !flip_horizontal {
+            // No transformations needed, return original data
+            return Ok(image_data.to_vec());
+        }
+
+        // Load the image from memory
+        let dynamic_image = image::load_from_memory(image_data)?;
+
+        // Apply horizontal flip
+        let flipped_image = dynamic_image.fliph();
+
+        // Encode back to the same format (determine format from input)
+        let mut buffer = Vec::new();
+        let mut cursor = std::io::Cursor::new(&mut buffer);
+
+        // Try to preserve the original format
+        let format = image::guess_format(image_data).unwrap_or(image::ImageFormat::Jpeg);
+        flipped_image.write_to(&mut cursor, format)?;
+
+        Ok(buffer)
     }
 }
 

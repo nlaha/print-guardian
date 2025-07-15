@@ -121,14 +121,14 @@ impl FailureDetector {
         Ok(())
     }
 
-    /// Detect print failures in the provided image.
+    /// Run failure detection on a darknet Image object directly.
     ///
-    /// Runs object detection on the input image and returns a list of detected
-    /// print failures with their confidence scores and bounding box locations.
+    /// This method accepts a darknet Image object directly, bypassing file I/O.
+    /// This is more efficient when image data is already loaded in memory.
     ///
     /// # Arguments
     ///
-    /// * `image_path` - Path to the image file to analyze
+    /// * `image` - A darknet Image object
     ///
     /// # Returns
     ///
@@ -137,24 +137,25 @@ impl FailureDetector {
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - Image file cannot be loaded
-    /// - Neural network inference fails
+    /// Returns an error if neural network inference fails.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// let detections = detector.detect_failures(&PathBuf::from("image.jpg"))?;
-    /// for detection in detections {
-    ///     info!("Found {}: {:.2}% confidence", detection.label, detection.confidence * 100.0);
-    /// }
+    /// let image_data = fetcher.fetch_with_retry(alert_callback)?;
+    /// let darknet_image = ImageFetcher::bytes_to_darknet_image(&image_data)?;
+    /// let detections = detector.detect_failures_from_image(&darknet_image)?;
     /// ```
-    pub fn detect_failures(&mut self, image_path: &PathBuf) -> Result<Vec<Detection>> {
-        let image = Image::open(image_path)?;
-        debug!("Loaded image: {}", image_path.display());
+    pub fn detect_failures_from_image(&mut self, image: &Image) -> Result<Vec<Detection>> {
+        debug!(
+            "Processing image with dimensions: {}x{}x{}",
+            image.width(),
+            image.height(),
+            image.channels()
+        );
 
         // Run object detection with NMS parameters
-        let detections = self.network.predict(&image, 0.25, 0.5, 0.45, true);
+        let detections = self.network.predict(image, 0.25, 0.5, 0.45, true);
 
         debug!("Raw detections count: {}", detections.len());
 
@@ -228,7 +229,7 @@ impl FailureDetector {
 /// the type of failure, confidence level, and location in the image.
 #[derive(Debug, Clone)]
 pub struct Detection {
-    /// The type of print failure detected (e.g., "spaghetti", "layer_shift").
+    /// The type of print failure detected (for the included model this is only "failure").
     pub label: String,
 
     /// Confidence score from 0.0 to 1.0.

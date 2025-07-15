@@ -1,6 +1,6 @@
 use anyhow::Result;
 use log::{debug, error, info, warn};
-use std::{fs, path::PathBuf, thread, time::Duration};
+use std::{fs, thread, time::Duration};
 
 // Module declarations
 mod alerts;
@@ -47,6 +47,7 @@ use printer::PrinterService;
 /// * `OUTPUT_DIR` - Output directory (default: "./output")
 /// * `OBJECTNESS_THRESHOLD` - Objectness threshold (default: "0.5")
 /// * `CLASS_PROB_THRESHOLD` - Class probability threshold (default: "0.5")
+/// * `FLIP_IMAGE` - Flip images horizontally (default: "false")
 ///
 /// # Usage
 ///
@@ -54,6 +55,7 @@ use printer::PrinterService;
 /// export IMAGE_URL="http://camera.local/image.jpg"
 /// export DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
 /// export MOONRAKER_API_URL="http://printer.local:7125"
+/// export FLIP_IMAGE="true"  # Optional: flip images if camera is mounted upside-down
 /// ./print-guardian
 /// ```
 fn main() -> Result<()> {
@@ -126,40 +128,7 @@ fn main() -> Result<()> {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
         info!("{}: Starting new monitoring iteration", timestamp);
 
-        // First check if the printer is online and printing
-        let res = printer_service.get_printer_status();
-        match res {
-            Ok(data) => {
-                let state = data["result"]["status"]["print_stats"]["state"]
-                    .as_str()
-                    .unwrap_or("unknown");
-
-                if last_status_update != state {
-                    // send the status of the print to discord
-                    if let Err(e) = alert_service.send_printer_status_alert(&data) {
-                        error!("Failed to send printer status alert: {}", e);
-                        thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
-                        continue;
-                    } else {
-                        info!("Printer status alert sent successfully");
-                        last_status_update = state.to_string();
-                    }
-                }
-
-                if state != "printing" {
-                    warn!("Printer is not currently printing. Skipping detection.");
-                    thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
-                    continue;
-                }
-            }
-            Err(e) => {
-                warn!("Failed to get printer status: {}", e);
-                thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
-                continue;
-            }
-        }
-
-        // Fetch image with retry logic
+        // Fetch image with retry logic first (we need it for both status updates and detection)
         let image_url = image_fetcher.get_image_url().to_string();
         let max_retries = image_fetcher.get_max_retries();
 
@@ -182,15 +151,65 @@ fn main() -> Result<()> {
             timestamp, image_url
         );
 
-        // Save image to disk for processing
-        let image_path = PathBuf::from("input_file.jpg");
-        if let Err(e) = fs::write(&image_path, image_data) {
-            error!("Failed to save image: {}", e);
-            continue;
+        // Apply image transformations if configured
+        let processed_image_data =
+            match ImageFetcher::apply_image_transformations(&image_data, config.flip_image) {
+                Ok(data) => data,
+                Err(e) => {
+                    error!(
+                        "{}: Failed to apply image transformations: {}",
+                        timestamp, e
+                    );
+                    image_data // Fall back to original image
+                }
+            };
+
+        // Check printer status and send alert with image if status changed
+        let res = printer_service.get_printer_status();
+        match res {
+            Ok(data) => {
+                let state = data["result"]["status"]["print_stats"]["state"]
+                    .as_str()
+                    .unwrap_or("unknown");
+
+                if last_status_update != state {
+                    // send the status of the print to discord with the current processed image
+                    if let Err(e) =
+                        alert_service.send_printer_status_alert(&data, Some(&processed_image_data))
+                    {
+                        error!("Failed to send printer status alert: {}", e);
+                        thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                        continue;
+                    } else {
+                        info!("Printer status alert sent successfully with image");
+                        last_status_update = state.to_string();
+                    }
+                }
+
+                if state != "printing" {
+                    warn!("Printer is not currently printing. Skipping detection.");
+                    thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                    continue;
+                }
+            }
+            Err(e) => {
+                warn!("Failed to get printer status: {}", e);
+                thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                continue;
+            }
         }
 
-        // Run failure detection
-        let detections = match detector.detect_failures(&image_path) {
+        // Convert image bytes directly to darknet Image (no disk I/O)
+        let darknet_image = match ImageFetcher::bytes_to_darknet_image(&processed_image_data) {
+            Ok(image) => image,
+            Err(e) => {
+                error!("{}: Failed to parse image from memory: {}", timestamp, e);
+                continue;
+            }
+        };
+
+        // Run failure detection directly on the image
+        let detections = match detector.detect_failures_from_image(&darknet_image) {
             Ok(detections) => detections,
             Err(e) => {
                 error!("{}: Detection failed: {}", timestamp, e);
@@ -213,8 +232,14 @@ fn main() -> Result<()> {
         );
 
         // Process detections
-        for detection in detections {
-            if detection.exceeds_threshold(constants::ALERT_PROBABILITY_THRESHOLD) {
+        let significant_detections: Vec<_> = detections
+            .into_iter()
+            .filter(|d| d.exceeds_threshold(constants::ALERT_PROBABILITY_THRESHOLD))
+            .collect();
+
+        if !significant_detections.is_empty() {
+            // Log all significant detections
+            for detection in &significant_detections {
                 warn!(
                     "{}: Detected {} print failure with {:.2}% confidence at x: {:.1}, y: {:.1}, w: {:.1}, h: {:.1}",
                     timestamp,
@@ -225,18 +250,38 @@ fn main() -> Result<()> {
                     detection.width(),
                     detection.height()
                 );
+            }
 
+            // Annotate image with all detections
+            let annotated_image = match ImageFetcher::annotate_image_with_detections(
+                &processed_image_data,
+                &significant_detections,
+                darknet_image.width() as u32,
+                darknet_image.height() as u32,
+            ) {
+                Ok(annotated) => Some(annotated),
+                Err(e) => {
+                    error!("{}: Failed to annotate image: {}", timestamp, e);
+                    None
+                }
+            };
+
+            // Process each detection for alerts and printer control
+            for detection in significant_detections {
                 print_failures += 1;
 
                 // Check if we should pause the printer
                 if print_failures > constants::PRINT_FAILURE_THRESHOLD {
                     match printer_service.pause_print() {
                         Ok(()) => {
-                            if let Err(e) = alert_service.send_print_pause_alert(print_failures) {
+                            let pause_image = annotated_image.as_deref();
+                            if let Err(e) =
+                                alert_service.send_print_pause_alert(print_failures, pause_image)
+                            {
                                 error!("Failed to send pause alert: {}", e);
                             } else {
                                 info!(
-                                    "Print paused due to multiple failures. Alert sent to Discord."
+                                    "Print paused due to multiple failures. Alert sent to Discord with image."
                                 );
                             }
                             print_failures = 0; // Reset after pausing
@@ -247,7 +292,8 @@ fn main() -> Result<()> {
                     }
                 }
 
-                // Send failure alert
+                // Send failure alert with annotated image
+                let image_data_ref = annotated_image.as_deref();
                 if let Err(e) = alert_service.send_print_failure_alert(
                     &detection.label,
                     detection.confidence_percent(),
@@ -255,14 +301,15 @@ fn main() -> Result<()> {
                     detection.center_y(),
                     detection.width(),
                     detection.height(),
+                    image_data_ref,
                 ) {
                     error!("Failed to send Discord print failure alert: {}", e);
                 } else {
-                    info!("Sent Discord print failure alert");
+                    info!("Sent Discord print failure alert with annotated image");
                 }
-            } else {
-                debug!("{}: No significant print failure detected.", timestamp);
             }
+        } else {
+            debug!("{}: No significant print failure detected.", timestamp);
         }
 
         // Small delay before next iteration
