@@ -118,6 +118,7 @@ fn main() -> Result<()> {
 
     // Main monitoring loop state
     let mut print_failures = 0;
+    let mut last_status_update = String::new();
 
     info!("Print Guardian initialized successfully. Starting monitoring loop...");
 
@@ -125,15 +126,35 @@ fn main() -> Result<()> {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
         info!("{}: Starting new monitoring iteration", timestamp);
 
-        // First check if the printer is online
-        if let Err(e) = printer_service.get_printer_status() {
-            warn!(
-                "Printer is offline, retrying in {} seconds: {}",
-                constants::RETRY_DELAY_SECONDS,
-                e
-            );
-            thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
-            continue;
+        // First check if the printer is online and printing
+        let res = printer_service.get_printer_status();
+        match res {
+            Ok(data) => {
+                let state = data["result"]["status"]["print_stats"]["state"]
+                    .as_str()
+                    .unwrap_or("unknown");
+                if state != "printing" {
+                    warn!("Printer is not currently printing. Skipping detection.");
+                    thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                    continue;
+                }
+
+                if last_status_update != state {
+                    // send the status of the print to discord
+                    if let Err(e) = alert_service.send_printer_status_alert(&data) {
+                        error!("Failed to send printer status alert: {}", e);
+                        thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                        continue;
+                    } else {
+                        info!("Printer status alert sent successfully");
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to get printer status: {}", e);
+                thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                continue;
+            }
         }
 
         // Fetch image with retry logic

@@ -132,7 +132,7 @@ impl PrinterService {
     pub fn get_printer_status(&self) -> Result<serde_json::Value> {
         let client = reqwest::blocking::Client::new();
         let response = client
-            .get(format!("{}/printer/info", self.api_url))
+            .get(format!("{}/printer/objects/query?webhooks&print_stats", self.api_url))
             .send()?;
 
         if !response.status().is_success() {
