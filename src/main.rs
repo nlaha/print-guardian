@@ -126,7 +126,7 @@ fn main() -> Result<()> {
 
     loop {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-        info!("{}: Starting new monitoring iteration", timestamp);
+        debug!("{}: Starting new monitoring iteration", timestamp);
 
         // Check printer status and send alert with image if status changed
         let res = printer_service.get_printer_status();
