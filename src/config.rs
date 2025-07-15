@@ -67,10 +67,10 @@ pub struct Config {
     /// Environment variable: `MOONRAKER_API_URL`
     pub moonraker_api_url: String,
 
-    /// Whether to flip the image horizontally after fetching.
+    /// Whether to flip the image vertically after fetching.
     ///
-    /// This is useful for cameras that are mounted in a way that produces
-    /// horizontally mirrored images. Set to "true" to enable horizontal flipping.
+    /// This is useful for cameras that are mounted upside down.
+    /// Set to "true" to enable vertical flipping.
     /// Environment variable: `FLIP_IMAGE`
     pub flip_image: bool,
 }

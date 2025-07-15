@@ -47,7 +47,7 @@ use printer::PrinterService;
 /// * `OUTPUT_DIR` - Output directory (default: "./output")
 /// * `OBJECTNESS_THRESHOLD` - Objectness threshold (default: "0.5")
 /// * `CLASS_PROB_THRESHOLD` - Class probability threshold (default: "0.5")
-/// * `FLIP_IMAGE` - Flip images horizontally (default: "false")
+/// * `FLIP_IMAGE` - Flip images vertically (default: "false")
 ///
 /// # Usage
 ///

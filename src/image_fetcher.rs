@@ -302,22 +302,18 @@ impl ImageFetcher {
 
         Ok(buffer)
     }
-
     /// Apply image transformations (e.g., flipping) to the fetched image.
     ///
     /// # Arguments
     ///
     /// * `image_data` - Raw image bytes
-    /// * `flip_horizontal` - Whether to flip the image horizontally
+    /// * `flip_vertical` - Whether to flip the image vertically
     ///
     /// # Returns
     ///
     /// Transformed image as bytes in the same format as the input
-    pub fn apply_image_transformations(
-        image_data: &[u8],
-        flip_horizontal: bool,
-    ) -> Result<Vec<u8>> {
-        if !flip_horizontal {
+    pub fn apply_image_transformations(image_data: &[u8], flip_vertical: bool) -> Result<Vec<u8>> {
+        if !flip_vertical {
             // No transformations needed, return original data
             return Ok(image_data.to_vec());
         }
@@ -325,8 +321,8 @@ impl ImageFetcher {
         // Load the image from memory
         let dynamic_image = image::load_from_memory(image_data)?;
 
-        // Apply horizontal flip
-        let flipped_image = dynamic_image.fliph();
+        // Apply vertical flip
+        let flipped_image = dynamic_image.flipv();
 
         // Encode back to the same format (determine format from input)
         let mut buffer = Vec::new();
