@@ -128,6 +128,41 @@ fn main() -> Result<()> {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
         info!("{}: Starting new monitoring iteration", timestamp);
 
+        // Check printer status and send alert with image if status changed
+        let res = printer_service.get_printer_status();
+        match res {
+            Ok(data) => {
+                let state = data["result"]["status"]["print_stats"]["state"]
+                    .as_str()
+                    .unwrap_or("unknown");
+
+                if last_status_update != state {
+                    // send the status of the print to discord with the current processed image
+                    if let Err(e) =
+                        alert_service.send_printer_status_alert(&data, Some(&processed_image_data))
+                    {
+                        error!("Failed to send printer status alert: {}", e);
+                        thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                        continue;
+                    } else {
+                        info!("Printer status alert sent successfully with image");
+                        last_status_update = state.to_string();
+                    }
+                }
+
+                if state != "printing" {
+                    warn!("Printer is not currently printing. Skipping detection.");
+                    thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                    continue;
+                }
+            }
+            Err(e) => {
+                warn!("Failed to get printer status: {}", e);
+                thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                continue;
+            }
+        }
+
         // Fetch image with retry logic first (we need it for both status updates and detection)
         let image_url = image_fetcher.get_image_url().to_string();
         let max_retries = image_fetcher.get_max_retries();
@@ -163,41 +198,6 @@ fn main() -> Result<()> {
                     image_data // Fall back to original image
                 }
             };
-
-        // Check printer status and send alert with image if status changed
-        let res = printer_service.get_printer_status();
-        match res {
-            Ok(data) => {
-                let state = data["result"]["status"]["print_stats"]["state"]
-                    .as_str()
-                    .unwrap_or("unknown");
-
-                if last_status_update != state {
-                    // send the status of the print to discord with the current processed image
-                    if let Err(e) =
-                        alert_service.send_printer_status_alert(&data, Some(&processed_image_data))
-                    {
-                        error!("Failed to send printer status alert: {}", e);
-                        thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
-                        continue;
-                    } else {
-                        info!("Printer status alert sent successfully with image");
-                        last_status_update = state.to_string();
-                    }
-                }
-
-                if state != "printing" {
-                    warn!("Printer is not currently printing. Skipping detection.");
-                    thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
-                    continue;
-                }
-            }
-            Err(e) => {
-                warn!("Failed to get printer status: {}", e);
-                thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
-                continue;
-            }
-        }
 
         // Convert image bytes directly to darknet Image (no disk I/O)
         let darknet_image = match ImageFetcher::bytes_to_darknet_image(&processed_image_data) {
