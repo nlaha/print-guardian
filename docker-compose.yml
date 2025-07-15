@@ -18,3 +18,11 @@ services:
     devices:
       # VAAPI Devices
       - /dev/dri:/dev/dri
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 1024M
+        reservations:
+          cpus: '4'
+          memory: 512M

@@ -169,9 +169,9 @@ impl AlertService {
             // convert seconds to a human-readable format with hours and minutes
             format!(
                 "{}h {}m {}s",
-                stats["print_duration"].as_u64().unwrap_or(0) / 3600,
-                (stats["print_duration"].as_u64().unwrap_or(0) % 3600) / 60,
-                stats["print_duration"].as_u64().unwrap_or(0) % 60
+                f64::floor(stats["print_duration"].as_f64().unwrap_or(0.0) / 3600.0),
+                f64::floor(stats["print_duration"].as_f64().unwrap_or(0.0) % 3600.0 / 60.0),
+                f64::floor(stats["print_duration"].as_f64().unwrap_or(0.0) % 60.0)
             )
         );
 
