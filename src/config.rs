@@ -85,8 +85,8 @@ impl Config {
     /// - `MODEL_CFG`: Path to the model config file (default: "./model.cfg")
     /// - `WEIGHTS_FILE`: Path to the weights file (default: "./model/model-weights.darknet")
     /// - `OUTPUT_DIR`: Output directory path (default: "./output")
-    /// - `OBJECTNESS_THRESHOLD`: Objectness threshold (default: "0.5")
-    /// - `CLASS_PROB_THRESHOLD`: Class probability threshold (default: "0.5")
+    /// - `OBJECTNESS_THRESHOLD`: Objectness threshold (default: "0.75")
+    /// - `CLASS_PROB_THRESHOLD`: Class probability threshold (default: "0.75")
     /// - `IMAGE_URL`: Camera image URL (required)
     /// - `DISCORD_WEBHOOK`: Discord webhook URL (required)
     /// - `MOONRAKER_API_URL`: Moonraker API URL (required)
@@ -114,12 +114,12 @@ impl Config {
             PathBuf::from(std::env::var("OUTPUT_DIR").unwrap_or_else(|_| "./output".to_string()));
 
         let objectness_threshold = std::env::var("OBJECTNESS_THRESHOLD")
-            .unwrap_or_else(|_| "0.5".to_string())
+            .unwrap_or_else(|_| "0.75".to_string())
             .parse::<f32>()
             .map_err(|e| format!("Invalid OBJECTNESS_THRESHOLD: {}", e))?;
 
         let class_prob_threshold = std::env::var("CLASS_PROB_THRESHOLD")
-            .unwrap_or_else(|_| "0.5".to_string())
+            .unwrap_or_else(|_| "0.75".to_string())
             .parse::<f32>()
             .map_err(|e| format!("Invalid CLASS_PROB_THRESHOLD: {}", e))?;
 
