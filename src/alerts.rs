@@ -135,11 +135,13 @@ impl AlertService {
 
         let description = format!(
             "
+            Current file: **{}**
             Current printer state: **{}**
             **Print Stats:**
             • Filament Used: {}mm
             • Print Duration: {}
             ",
+            stats["file_name"].as_str().unwrap_or("Unknown"),
             stats["state"].as_str().unwrap_or("unknown"),
             stats["filament_used"].as_f64().unwrap_or(0.0),
             // convert seconds to a human-readable format with hours and minutes
