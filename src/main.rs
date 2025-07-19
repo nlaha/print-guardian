@@ -249,7 +249,7 @@ fn main() -> Result<()> {
             .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .unwrap_or(0.0);
 
-        if (detections.len() > 0) {
+        if detections.len() > 0 {
             info!(
                 "{}: Detected {} failures with max confidence {:.2}%",
                 timestamp,

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::fmt;
 
 /// Custom error types for the Print Guardian application.

@@ -1,7 +1,7 @@
+#![allow(dead_code)]
 use anyhow::Result;
 use darknet::{BBox, Image, Network};
 use log::{debug, info};
-use serde_json::de;
 use std::{fs, path::PathBuf};
 
 /// Print failure detection service using YOLO/Darknet neural networks.

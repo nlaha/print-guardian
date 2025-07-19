@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::Result;
 use log::{error, info, warn};
 use std::{thread, time::Duration};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::Result;
 
 /// Printer control service for interacting with Moonraker API.
