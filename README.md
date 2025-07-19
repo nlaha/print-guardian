@@ -7,7 +7,8 @@ Supported alerting methods:
 
 Utilizes the Obico Darknet model for object detection, integrated with Discord for alerts and Moonraker for printer control.
 
-<img width="1043" height="922" alt="image" src="https://github.com/user-attachments/assets/e10f3c66-688f-4da0-9925-99f5f6b50576" />
+<img width="522" height="461" alt="image" src="https://github.com/user-attachments/assets/e10f3c66-688f-4da0-9925-99f5f6b50576" />
+<img width="454" height="358" alt="image" src="https://github.com/user-attachments/assets/2ada9d3a-dda0-4e75-9557-ac9aea56f2c9" />
 
 
 ## Installation
