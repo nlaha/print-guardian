@@ -1,6 +1,7 @@
 use anyhow::Result;
 use darknet::{BBox, Image, Network};
 use log::{debug, info};
+use serde_json::de;
 use std::{fs, path::PathBuf};
 
 /// Print failure detection service using YOLO/Darknet neural networks.
@@ -153,10 +154,29 @@ impl FailureDetector {
             image.channels()
         );
 
+        // normalize image pixels to [0.0, 1.0]
+        let image = image.normalize();
+
         // Run object detection with NMS parameters
         let detections = self.network.predict(image, 0.25, 0.5, 0.45, true);
 
         debug!("Raw detections count: {}", detections.len());
+        debug!(
+            "Raw detection objectness: {:?}",
+            detections
+                .iter()
+                .map(|d| d.objectness())
+                .filter(|&o| o > 0.0)
+                .collect::<Vec<_>>()
+        );
+        debug!(
+            "Raw detection classes: {:?}",
+            detections
+                .iter()
+                .map(|d| d.best_class(None))
+                .filter(|c| c.is_some() && c.unwrap().1 > 0.0)
+                .collect::<Vec<_>>()
+        );
 
         let mut results = Vec::new();
 
