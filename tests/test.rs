@@ -29,8 +29,6 @@ fn test_printer_service_url_and_mock() {
     // This test only checks struct creation and URL formatting, not real HTTP
     let url = "http://localhost:7125".to_string();
     let printer = print_guardian::PrinterService::new(url.clone());
-    // The struct should store the URL
-    let status_url = format!("{}/printer/objects/query?webhooks&print_stats", url);
     // We can't call get_printer_status() without a real server, but we can check the type
     assert_eq!(printer.api_url, url);
     // Optionally, test that the pause/resume/cancel methods return errors if the server is unreachable
