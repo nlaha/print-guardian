@@ -1,6 +1,6 @@
 use anyhow::Result;
 use log::{debug, error, info, warn};
-use std::{fs, ops::ControlFlow, thread, time::Duration};
+use std::{fs, thread, time::Duration};
 
 // Module declarations
 mod alerts;
@@ -161,19 +161,23 @@ fn main() -> Result<()> {
                     };
 
                     // send the status of the print to discord with the current processed image
-                    if let Err(e) =
-                        alert_service.send_printer_status_alert(&data, Some(image_data).as_slice())
+                    match alert_service
+                        .send_printer_status_alert(&data, Some(image_data.as_slice()))
                     {
-                        // If sending the alert fails, log the error and retry
-                        warn!("{}: Failed to send printer status alert: {}", timestamp, e);
-                        // Retry logic can be added here if needed
-                    } else if last_status_update.is_empty() {
-                        error!("Failed to send printer status alert: {}", e);
-                        thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
-                        continue;
-                    } else {
-                        info!("Printer status alert sent successfully with image");
-                        last_status_update = state.to_string();
+                        Err(e) => {
+                            // If sending the alert fails, log the error and retry
+                            warn!("{}: Failed to send printer status alert: {}", timestamp, e);
+                            // Retry logic can be added here if needed
+                            if last_status_update.is_empty() {
+                                error!("Failed to send printer status alert: {}", e);
+                                thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+                                continue;
+                            }
+                        }
+                        Ok(()) => {
+                            info!("Printer status alert sent successfully with image");
+                            last_status_update = state.to_string();
+                        }
                     }
                 }
 

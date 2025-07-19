@@ -346,18 +346,3 @@ impl AlertService {
         Ok(())
     }
 }
-
-/// Alert color constants for consistent theming.
-pub mod colors {
-    /// Red color for critical alerts and errors.
-    pub const RED: u32 = 0xFF0000;
-
-    /// Orange color for warnings and print failures.
-    pub const ORANGE: u32 = 0xFFA500;
-
-    /// Green color for recovery and success messages.
-    pub const GREEN: u32 = 0x00FF00;
-
-    /// Blue color for informational messages.
-    pub const BLUE: u32 = 0x0099FF;
-}

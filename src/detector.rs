@@ -6,8 +6,7 @@ use std::{fs, path::PathBuf};
 /// Print failure detection service using YOLO/Darknet neural networks.
 ///
 /// This service handles loading and running object detection models to identify
-/// print failures in real-time camera images. It can detect various types of
-/// print failures such as spaghetti, layer shifts, warping, and other issues.
+/// print failures
 pub struct FailureDetector {
     network: Network,
     labels: Vec<String>,

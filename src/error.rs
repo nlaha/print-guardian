@@ -1,7 +1,7 @@
 use std::fmt;
 
 /// Custom error types for the Print Guardian application.
-/// 
+///
 /// This module defines specific error types that can occur throughout the
 /// application, providing better error handling and more informative
 /// error messages for different failure scenarios.
@@ -11,19 +11,19 @@ use std::fmt;
 pub enum PrintGuardianError {
     /// Errors related to image fetching and processing.
     ImageError(ImageError),
-    
+
     /// Errors related to neural network detection.
     DetectionError(DetectionError),
-    
+
     /// Errors related to printer control operations.
     PrinterError(PrinterError),
-    
+
     /// Errors related to alert/notification systems.
     AlertError(AlertError),
-    
+
     /// Configuration and setup errors.
     ConfigError(ConfigError),
-    
+
     /// Network and connectivity errors.
     NetworkError(NetworkError),
 }
@@ -33,13 +33,13 @@ pub enum PrintGuardianError {
 pub enum ImageError {
     /// Failed to download image from remote URL.
     DownloadFailed { url: String, reason: String },
-    
+
     /// Image file could not be saved to disk.
     SaveFailed { path: String, reason: String },
-    
+
     /// Image format is not supported or corrupted.
     InvalidFormat { path: String },
-    
+
     /// Image file could not be opened or read.
     ReadFailed { path: String, reason: String },
 }
@@ -49,16 +49,16 @@ pub enum ImageError {
 pub enum DetectionError {
     /// Model configuration file could not be loaded.
     ModelConfigLoadFailed { path: String, reason: String },
-    
+
     /// Model weights file could not be loaded.
     WeightsLoadFailed { path: String, reason: String },
-    
+
     /// Labels file could not be read or parsed.
     LabelsLoadFailed { path: String, reason: String },
-    
+
     /// Neural network inference failed.
     InferenceFailed { reason: String },
-    
+
     /// Model weights download failed.
     WeightsDownloadFailed { url: String, reason: String },
 }
@@ -68,13 +68,20 @@ pub enum DetectionError {
 pub enum PrinterError {
     /// Failed to connect to printer API.
     ConnectionFailed { api_url: String, reason: String },
-    
+
     /// Printer API returned an error response.
-    ApiError { endpoint: String, status: u16, message: String },
-    
+    ApiError {
+        endpoint: String,
+        status: u16,
+        message: String,
+    },
+
     /// Printer is in an invalid state for the requested operation.
-    InvalidState { requested_action: String, current_state: String },
-    
+    InvalidState {
+        requested_action: String,
+        current_state: String,
+    },
+
     /// Authentication with printer API failed.
     AuthenticationFailed { api_url: String },
 }
@@ -84,10 +91,10 @@ pub enum PrinterError {
 pub enum AlertError {
     /// Discord webhook request failed.
     WebhookFailed { reason: String },
-    
+
     /// Alert message formatting failed.
     MessageFormatError { reason: String },
-    
+
     /// Invalid webhook URL provided.
     InvalidWebhookUrl { url: String },
 }
@@ -97,13 +104,17 @@ pub enum AlertError {
 pub enum ConfigError {
     /// Required environment variable is missing.
     MissingEnvVar { var_name: String },
-    
+
     /// Configuration file could not be read.
     FileReadError { path: String, reason: String },
-    
+
     /// Invalid configuration values provided.
-    InvalidValue { field: String, value: String, reason: String },
-    
+    InvalidValue {
+        field: String,
+        value: String,
+        reason: String,
+    },
+
     /// Required file path does not exist.
     MissingFile { path: String },
 }
@@ -113,13 +124,13 @@ pub enum ConfigError {
 pub enum NetworkError {
     /// Generic network request failed.
     RequestFailed { url: String, reason: String },
-    
+
     /// Network timeout occurred.
     Timeout { url: String, timeout_seconds: u64 },
-    
+
     /// DNS resolution failed.
     DnsError { hostname: String },
-    
+
     /// SSL/TLS certificate verification failed.
     SslError { url: String, reason: String },
 }
@@ -164,7 +175,11 @@ impl fmt::Display for DetectionError {
                 write!(f, "Failed to load model config from '{}': {}", path, reason)
             }
             DetectionError::WeightsLoadFailed { path, reason } => {
-                write!(f, "Failed to load model weights from '{}': {}", path, reason)
+                write!(
+                    f,
+                    "Failed to load model weights from '{}': {}",
+                    path, reason
+                )
             }
             DetectionError::LabelsLoadFailed { path, reason } => {
                 write!(f, "Failed to load labels from '{}': {}", path, reason)
@@ -173,7 +188,11 @@ impl fmt::Display for DetectionError {
                 write!(f, "Neural network inference failed: {}", reason)
             }
             DetectionError::WeightsDownloadFailed { url, reason } => {
-                write!(f, "Failed to download model weights from '{}': {}", url, reason)
+                write!(
+                    f,
+                    "Failed to download model weights from '{}': {}",
+                    url, reason
+                )
             }
         }
     }
@@ -183,13 +202,32 @@ impl fmt::Display for PrinterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PrinterError::ConnectionFailed { api_url, reason } => {
-                write!(f, "Failed to connect to printer at '{}': {}", api_url, reason)
+                write!(
+                    f,
+                    "Failed to connect to printer at '{}': {}",
+                    api_url, reason
+                )
             }
-            PrinterError::ApiError { endpoint, status, message } => {
-                write!(f, "Printer API error at '{}' (HTTP {}): {}", endpoint, status, message)
+            PrinterError::ApiError {
+                endpoint,
+                status,
+                message,
+            } => {
+                write!(
+                    f,
+                    "Printer API error at '{}' (HTTP {}): {}",
+                    endpoint, status, message
+                )
             }
-            PrinterError::InvalidState { requested_action, current_state } => {
-                write!(f, "Cannot {} printer in state '{}'", requested_action, current_state)
+            PrinterError::InvalidState {
+                requested_action,
+                current_state,
+            } => {
+                write!(
+                    f,
+                    "Cannot {} printer in state '{}'",
+                    requested_action, current_state
+                )
             }
             PrinterError::AuthenticationFailed { api_url } => {
                 write!(f, "Authentication failed for printer API at '{}'", api_url)
@@ -221,10 +259,22 @@ impl fmt::Display for ConfigError {
                 write!(f, "Required environment variable '{}' is not set", var_name)
             }
             ConfigError::FileReadError { path, reason } => {
-                write!(f, "Failed to read configuration file '{}': {}", path, reason)
+                write!(
+                    f,
+                    "Failed to read configuration file '{}': {}",
+                    path, reason
+                )
             }
-            ConfigError::InvalidValue { field, value, reason } => {
-                write!(f, "Invalid value '{}' for field '{}': {}", value, field, reason)
+            ConfigError::InvalidValue {
+                field,
+                value,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "Invalid value '{}' for field '{}': {}",
+                    value, field, reason
+                )
             }
             ConfigError::MissingFile { path } => {
                 write!(f, "Required file not found: {}", path)
@@ -239,8 +289,15 @@ impl fmt::Display for NetworkError {
             NetworkError::RequestFailed { url, reason } => {
                 write!(f, "Network request to '{}' failed: {}", url, reason)
             }
-            NetworkError::Timeout { url, timeout_seconds } => {
-                write!(f, "Request to '{}' timed out after {} seconds", url, timeout_seconds)
+            NetworkError::Timeout {
+                url,
+                timeout_seconds,
+            } => {
+                write!(
+                    f,
+                    "Request to '{}' timed out after {} seconds",
+                    url, timeout_seconds
+                )
             }
             NetworkError::DnsError { hostname } => {
                 write!(f, "DNS resolution failed for hostname '{}'", hostname)
