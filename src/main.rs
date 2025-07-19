@@ -150,6 +150,13 @@ fn main() -> Result<()> {
                     .unwrap_or("unknown");
 
                 if last_status_update != state {
+                    // when the print state changes reset the print failures count
+                    print_failures = 0;
+                    info!(
+                        "Printer state changed to '{}'. Resetting print failures count.",
+                        state
+                    );
+
                     // Fetch image for this status update
                     let image_data = match get_image_data(
                         &alert_service,
