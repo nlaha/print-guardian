@@ -35,15 +35,15 @@ export DISCORD_WEBHOOK="https://discord.com/api/webhooks/YOUR_WEBHOOK_URL"
 export MOONRAKER_API_URL="http://your-printer.local:7125"
 ```
 
-#### Optional Variables (with defaults)
+#### Optional Variables
 
 ```bash
 export LABEL_FILE="./labels.txt"
 export MODEL_CFG="./model.cfg"
 export WEIGHTS_FILE="./model/model-weights.darknet"
 export OUTPUT_DIR="./output"
-export OBJECTNESS_THRESHOLD="0.5"
-export CLASS_PROB_THRESHOLD="0.5"
+export OBJECTNESS_THRESHOLD="0.08"
+export CLASS_PROB_THRESHOLD="0.4"
 ```
 
 ### Using .env File
