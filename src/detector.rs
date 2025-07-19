@@ -155,7 +155,10 @@ impl FailureDetector {
         );
 
         // normalize image pixels to [0.0, 1.0]
-        let image = image.normalize();
+        let image_data = image.get_data_mut();
+        for pixel in image_data.iter_mut() {
+            *pixel = (*pixel as f32) / 255.0;
+        }
 
         // Run object detection with NMS parameters
         let detections = self.network.predict(image, 0.25, 0.5, 0.45, true);
