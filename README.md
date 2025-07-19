@@ -1,4 +1,5 @@
 # Print Guardian
+[![CI](https://github.com/nlaha/print-guardian/actions/workflows/ci.yaml/badge.svg)](https://github.com/nlaha/print-guardian/actions/workflows/ci.yaml)
 
 AI-powered 3D print failure detection system that monitors printer cameras in real-time and automatically responds to detected failures.
 
