@@ -12,21 +12,6 @@
 //! * [`detector`] - AI-powered print failure detection using YOLO/Darknet
 //! * [`error`] - Comprehensive error types and handling
 //!
-//! # Quick Start
-//!
-//! ```rust
-//! use print_guardian::*;
-//!
-//! // Set up configuration
-//! let config = config::Config::from_env();
-//! let env_config = config::EnvConfig::load()?;
-//!
-//! // Initialize services
-//! let alert_service = alerts::AlertService::new(env_config.discord_webhook);
-//! let printer_service = printer::PrinterService::new(env_config.moonraker_api_url);
-//!
-//! // Start monitoring...
-//! ```
 
 pub mod alerts;
 pub mod config;

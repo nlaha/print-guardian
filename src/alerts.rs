@@ -17,11 +17,6 @@ impl AlertService {
     ///
     /// * `webhook_url` - A valid Discord webhook URL
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let alert_service = AlertService::new("https://discord.com/api/webhooks/...".to_string());
-    /// ```
     pub fn new(webhook_url: String) -> Self {
         Self { webhook_url }
     }
@@ -45,16 +40,6 @@ impl AlertService {
     /// - The Discord API returns an error status
     /// - JSON serialization fails
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// alert_service.send_alert(
-    ///     "Print Failure Detected",
-    ///     "Detected spaghetti with 85% confidence",
-    ///     0xFFA500, // Orange
-    ///     "⚠️"
-    /// )?;
-    /// ```
     pub fn send_alert(
         &self,
         title: &str,
@@ -106,11 +91,6 @@ impl AlertService {
     /// * `x`, `y`, `w`, `h` - Bounding box coordinates and dimensions
     /// * `annotated_image` - Optional annotated image data (JPEG format)
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// alert_service.send_print_failure_alert("spaghetti", 85.5, 120.0, 80.0, 50.0, 30.0, None)?;
-    /// ```
     pub fn send_print_failure_alert(
         &self,
         label: &str,

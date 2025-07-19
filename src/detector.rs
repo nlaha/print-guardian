@@ -33,17 +33,6 @@ impl FailureDetector {
     /// - Labels file cannot be read
     /// - Model configuration is invalid
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let detector = FailureDetector::new(
-    ///     PathBuf::from("model.cfg"),
-    ///     PathBuf::from("weights.darknet"),
-    ///     PathBuf::from("labels.txt"),
-    ///     0.5,
-    ///     0.5
-    /// )?;
-    /// ```
     pub fn new(
         model_cfg: PathBuf,
         weights_path: PathBuf,
@@ -139,13 +128,6 @@ impl FailureDetector {
     ///
     /// Returns an error if neural network inference fails.
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let image_data = fetcher.fetch_with_retry(alert_callback)?;
-    /// let darknet_image = ImageFetcher::bytes_to_darknet_image(&image_data)?;
-    /// let detections = detector.detect_failures_from_image(&darknet_image)?;
-    /// ```
     pub fn detect_failures_from_image(&mut self, image: &Image) -> Result<Vec<Detection>> {
         debug!(
             "Processing image with dimensions: {}x{}x{}",

@@ -32,17 +32,6 @@ impl ImageFetcher {
     /// * `image_urls` - Vector of URLs to fetch images from (round-robin)
     /// * `max_retries` - Maximum number of retry attempts before giving up
     /// * `retry_delay_seconds` - Delay between retry attempts
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let fetcher = ImageFetcher::new(
-    ///     vec!["http://camera1.local/image.jpg".to_string(),
-    ///          "http://camera2.local/image.jpg".to_string()],
-    ///     15,
-    ///     15
-    /// );
-    /// ```
     pub fn new(image_urls: Vec<String>, max_retries: u32, retry_delay_seconds: u64) -> Self {
         Self {
             image_urls,
@@ -75,14 +64,6 @@ impl ImageFetcher {
     /// - Network connectivity issues persist
     /// - The remote server returns error responses
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let image_data = fetcher.fetch_with_retry(|alert_type| {
-    ///     // Handle alert sending
-    ///     Ok(())
-    /// })?;
-    /// ```
     pub fn fetch_with_retry<F>(
         &mut self,
         mut alert_callback: F,
@@ -242,13 +223,6 @@ impl ImageFetcher {
     /// - Image data is corrupted
     /// - Memory allocation fails
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let image_data = fetcher.fetch_with_retry(alert_callback)?;
-    /// let darknet_image = ImageFetcher::bytes_to_darknet_image(&image_data)?;
-    /// let detections = detector.detect_failures_from_image(&darknet_image)?;
-    /// ```
     pub fn bytes_to_darknet_image(image_data: &[u8]) -> Result<Image> {
         // Load image from memory using the image crate
         let dynamic_image: image::DynamicImage = image::load_from_memory(image_data)?;

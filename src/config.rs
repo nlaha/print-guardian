@@ -100,11 +100,6 @@ impl Config {
     /// - `FLIP_IMAGE`: Whether to flip images horizontally (default: "false")
     /// - `DISPLAY_CAMERA_INDEX`: Optional index of the camera to display (default: 0)
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let config = Config::load().expect("Failed to load configuration");
-    /// ```
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let label_file = PathBuf::from(
             std::env::var("LABEL_FILE").unwrap_or_else(|_| "./labels.txt".to_string()),
