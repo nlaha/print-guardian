@@ -1,0 +1,11 @@
+name: "Print Guardian"
+description: "A Rust application for monitoring print jobs with Discord alerting capabilities."
+version: "1.0.0"
+slug: "print_guardian"
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386

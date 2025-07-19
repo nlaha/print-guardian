@@ -1,6 +1,6 @@
 use anyhow::Result;
 use log::{debug, error, info, warn};
-use std::{fs, thread, time::Duration};
+use std::{fs, ops::ControlFlow, thread, time::Duration};
 
 // Module declarations
 mod alerts;
@@ -36,7 +36,7 @@ use printer::PrinterService;
 /// # Environment Variables
 ///
 /// Required:
-/// * `IMAGE_URL` - Camera image URL for monitoring
+/// * `IMAGE_URL` - Camera image URL(s) for monitoring (single URL or comma-separated list for round-robin)
 /// * `DISCORD_WEBHOOK` - Discord webhook URL for alerts
 /// * `MOONRAKER_API_URL` - Moonraker API endpoint for printer control
 ///
@@ -52,7 +52,12 @@ use printer::PrinterService;
 /// # Usage
 ///
 /// ```bash
+/// # Single camera URL:
 /// export IMAGE_URL="http://camera.local/image.jpg"
+///
+/// # Multiple camera URLs (round-robin):
+/// export IMAGE_URL="http://camera1.local/image.jpg,http://camera2.local/image.jpg"
+///
 /// export DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
 /// export MOONRAKER_API_URL="http://printer.local:7125"
 /// export FLIP_IMAGE="true"  # Optional: flip images if camera is mounted upside-down
@@ -77,7 +82,11 @@ fn main() -> Result<()> {
 
     info!("Print Guardian starting...");
     info!("Using Moonraker API URL: {}", config.moonraker_api_url);
-    info!("Monitoring camera: {}", config.image_url);
+    info!(
+        "Monitoring {} camera(s): {}",
+        config.image_urls.len(),
+        config.image_urls.join(", ")
+    );
 
     // Initialize services
     let alert_service = AlertService::new(config.discord_webhook.clone());
@@ -99,12 +108,16 @@ fn main() -> Result<()> {
 
     // Initialize image fetcher
     let mut image_fetcher = ImageFetcher::new(
-        config.image_url.clone(),
+        config.image_urls.clone(),
         constants::MAX_RETRIES,
         constants::RETRY_DELAY_SECONDS,
     );
 
-    info!("Image fetcher initialized with URL: {}", config.image_url);
+    info!(
+        "Image fetcher initialized with {} URL(s): {}",
+        config.image_urls.len(),
+        config.image_urls.join(", ")
+    );
 
     // Create output directory
     fs::create_dir_all(&config.output_dir)?;
@@ -137,8 +150,24 @@ fn main() -> Result<()> {
                     .unwrap_or("unknown");
 
                 if last_status_update != state {
+                    // Fetch image for this status update
+                    let image_data = match get_image_data(
+                        &alert_service,
+                        &mut image_fetcher,
+                        config.display_camera_index,
+                    ) {
+                        Some(value) => value,
+                        None => continue,
+                    };
+
                     // send the status of the print to discord with the current processed image
-                    if let Err(e) = alert_service.send_printer_status_alert(&data, None) {
+                    if let Err(e) =
+                        alert_service.send_printer_status_alert(&data, Some(image_data).as_slice())
+                    {
+                        // If sending the alert fails, log the error and retry
+                        warn!("{}: Failed to send printer status alert: {}", timestamp, e);
+                        // Retry logic can be added here if needed
+                    } else if last_status_update.is_empty() {
                         error!("Failed to send printer status alert: {}", e);
                         thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
                         continue;
@@ -161,27 +190,14 @@ fn main() -> Result<()> {
             }
         }
 
-        // Fetch image with retry logic first (we need it for both status updates and detection)
-        let image_url = image_fetcher.get_image_url().to_string();
-        let max_retries = image_fetcher.get_max_retries();
-
-        let image_data = match image_fetcher.fetch_with_retry(|alert_type| match alert_type {
-            AlertType::SystemOffline => {
-                alert_service.send_system_offline_alert(&image_url, max_retries)
-            }
-            AlertType::SystemRecovery => alert_service.send_system_recovery_alert(),
-        }) {
-            Ok(data) => data,
-            Err(e) => {
-                error!("Failed to fetch image: {}", e);
-                thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
-                continue;
-            }
+        let image_data = match get_image_data(&alert_service, &mut image_fetcher, None) {
+            Some(value) => value,
+            None => continue,
         };
 
         info!(
-            "{}: Fetched image from {} successfully",
-            timestamp, image_url
+            "{}: Fetched image from camera endpoints successfully",
+            timestamp
         );
 
         // Apply image transformations if configured
@@ -313,4 +329,33 @@ fn main() -> Result<()> {
         // Small delay before next iteration
         thread::sleep(Duration::from_secs(1));
     }
+}
+
+/**
+ * Fetch image data from the webcam URLs with retry logic.
+ */
+fn get_image_data(
+    alert_service: &AlertService,
+    image_fetcher: &mut ImageFetcher,
+    url_index: Option<usize>,
+) -> Option<Vec<u8>> {
+    let image_urls_string = image_fetcher.get_image_urls_string();
+    let max_retries = image_fetcher.get_max_retries();
+    let image_data = match image_fetcher.fetch_with_retry(
+        |alert_type| match alert_type {
+            AlertType::SystemOffline => {
+                alert_service.send_system_offline_alert(&image_urls_string, max_retries)
+            }
+            AlertType::SystemRecovery => alert_service.send_system_recovery_alert(),
+        },
+        url_index,
+    ) {
+        Ok(data) => data,
+        Err(e) => {
+            error!("Failed to fetch image: {}", e);
+            thread::sleep(Duration::from_secs(constants::RETRY_DELAY_SECONDS));
+            return None;
+        }
+    };
+    Some(image_data)
 }

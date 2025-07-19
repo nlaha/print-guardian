@@ -46,12 +46,13 @@ pub struct Config {
     /// Environment variable: `CLASS_PROB_THRESHOLD`
     pub class_prob_threshold: f32,
 
-    /// The URL to fetch the input image from.
+    /// The URLs to fetch input images from.
     ///
-    /// This should point to a camera feed or image endpoint that provides
-    /// real-time images of the 3D printer.
+    /// This can be a single URL or multiple comma-separated URLs pointing to
+    /// camera feeds or image endpoints that provide real-time images of the 3D printer.
+    /// When multiple URLs are provided, they will be used in round-robin fashion.
     /// Environment variable: `IMAGE_URL`
-    pub image_url: String,
+    pub image_urls: Vec<String>,
 
     /// Discord webhook URL for sending alerts.
     ///
@@ -73,6 +74,12 @@ pub struct Config {
     /// Set to "true" to enable vertical flipping.
     /// Environment variable: `FLIP_IMAGE`
     pub flip_image: bool,
+
+    /// Optional index of the camera to display.
+    /// This is used to select a specific camera
+    /// when multiple cameras are configured. If not set,
+    /// the first camera in the list will be used.
+    pub display_camera_index: Option<usize>,
 }
 
 impl Config {
@@ -87,7 +94,7 @@ impl Config {
     /// - `OUTPUT_DIR`: Output directory path (default: "./output")
     /// - `OBJECTNESS_THRESHOLD`: Objectness threshold (default: "0.75")
     /// - `CLASS_PROB_THRESHOLD`: Class probability threshold (default: "0.75")
-    /// - `IMAGE_URL`: Camera image URL (required)
+    /// - `IMAGE_URL`: Camera image URL(s) (required) - single URL or comma-separated list for round-robin
     /// - `DISCORD_WEBHOOK`: Discord webhook URL (required)
     /// - `MOONRAKER_API_URL`: Moonraker API URL (required)
     /// - `FLIP_IMAGE`: Whether to flip images horizontally (default: "false")
@@ -126,6 +133,17 @@ impl Config {
         let image_url =
             std::env::var("IMAGE_URL").map_err(|_| "IMAGE_URL environment variable is required")?;
 
+        // Parse image URLs - can be single URL or comma-separated list
+        let image_urls: Vec<String> = image_url
+            .split(',')
+            .map(|url| url.trim().to_string())
+            .filter(|url| !url.is_empty())
+            .collect();
+
+        if image_urls.is_empty() {
+            return Err("IMAGE_URL must contain at least one valid URL".into());
+        }
+
         let discord_webhook = std::env::var("DISCORD_WEBHOOK")
             .map_err(|_| "DISCORD_WEBHOOK environment variable is required")?;
 
@@ -137,6 +155,13 @@ impl Config {
             .parse::<bool>()
             .map_err(|e| format!("Invalid FLIP_IMAGE (must be 'true' or 'false'): {}", e))?;
 
+        let display_camera_index = std::env::var("DISPLAY_CAMERA_INDEX")
+            .ok()
+            .unwrap_or_else(|| "0".to_string())
+            .parse::<usize>()
+            .ok()
+            .filter(|&i| i < image_urls.len());
+
         Ok(Config {
             label_file,
             model_cfg,
@@ -144,10 +169,11 @@ impl Config {
             output_dir,
             objectness_threshold,
             class_prob_threshold,
-            image_url,
+            image_urls,
             discord_webhook,
             moonraker_api_url,
             flip_image,
+            display_camera_index,
         })
     }
 }

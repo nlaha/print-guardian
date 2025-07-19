@@ -13,9 +13,11 @@ use crate::detector::Detection;
 ///
 /// This service handles downloading images from camera endpoints with robust
 /// retry logic, timeout handling, and status tracking for reliable operation
-/// in network-unstable environments.
+/// in network-unstable environments. Supports multiple URLs with round-robin
+/// multiplexing for load balancing or redundancy.
 pub struct ImageFetcher {
-    image_url: String,
+    image_urls: Vec<String>,
+    current_url_index: usize,
     max_retries: u32,
     retry_delay_seconds: u64,
     retry_count: u32,
@@ -27,7 +29,7 @@ impl ImageFetcher {
     ///
     /// # Arguments
     ///
-    /// * `image_url` - URL to fetch images from
+    /// * `image_urls` - Vector of URLs to fetch images from (round-robin)
     /// * `max_retries` - Maximum number of retry attempts before giving up
     /// * `retry_delay_seconds` - Delay between retry attempts
     ///
@@ -35,14 +37,16 @@ impl ImageFetcher {
     ///
     /// ```rust
     /// let fetcher = ImageFetcher::new(
-    ///     "http://camera.local/image.jpg".to_string(),
+    ///     vec!["http://camera1.local/image.jpg".to_string(),
+    ///          "http://camera2.local/image.jpg".to_string()],
     ///     15,
     ///     15
     /// );
     /// ```
-    pub fn new(image_url: String, max_retries: u32, retry_delay_seconds: u64) -> Self {
+    pub fn new(image_urls: Vec<String>, max_retries: u32, retry_delay_seconds: u64) -> Self {
         Self {
-            image_url,
+            image_urls,
+            current_url_index: 0,
             max_retries,
             retry_delay_seconds,
             retry_count: 0,
@@ -79,12 +83,16 @@ impl ImageFetcher {
     ///     Ok(())
     /// })?;
     /// ```
-    pub fn fetch_with_retry<F>(&mut self, mut alert_callback: F) -> Result<Vec<u8>>
+    pub fn fetch_with_retry<F>(
+        &mut self,
+        mut alert_callback: F,
+        url_index: Option<usize>,
+    ) -> Result<Vec<u8>>
     where
         F: FnMut(AlertType) -> Result<()>,
     {
         loop {
-            match self.attempt_fetch() {
+            match self.attempt_fetch(url_index) {
                 Ok(data) => {
                     // If we successfully got data after being disconnected, send recovery message
                     if self.disconnect_alert_sent {
@@ -136,6 +144,8 @@ impl ImageFetcher {
     /// This is used internally by `fetch_with_retry` but can also be used
     /// directly for testing or when custom retry logic is needed.
     ///
+    /// Uses round-robin URL selection when multiple URLs are configured.
+    ///
     /// # Returns
     ///
     /// Returns the image data as a byte vector on success.
@@ -146,8 +156,15 @@ impl ImageFetcher {
     /// - HTTP request fails
     /// - Server returns non-success status
     /// - Response body cannot be read
-    fn attempt_fetch(&self) -> Result<Vec<u8>> {
-        let response = reqwest::blocking::get(&self.image_url)?;
+    fn attempt_fetch(&mut self, url_index: Option<usize>) -> Result<Vec<u8>> {
+        // Get current URL and advance to next for round-robin
+        let current_url = match url_index {
+            Some(index) => &self.image_urls[index],
+            None => &self.image_urls[self.current_url_index],
+        };
+        self.current_url_index = (self.current_url_index + 1) % self.image_urls.len();
+
+        let response = reqwest::blocking::get(current_url)?;
 
         if !response.status().is_success() {
             return Err(anyhow::anyhow!(
@@ -177,16 +194,27 @@ impl ImageFetcher {
 
     /// Reset the internal state.
     ///
-    /// Resets retry count and alert status. Useful for testing or when
+    /// Resets retry count, alert status, and URL index. Useful for testing or when
     /// manually recovering from error states.
     pub fn reset_state(&mut self) {
         self.retry_count = 0;
         self.disconnect_alert_sent = false;
+        self.current_url_index = 0;
     }
 
-    /// Get the configured image URL.
-    pub fn get_image_url(&self) -> &str {
-        &self.image_url
+    /// Get the configured image URLs.
+    pub fn get_image_urls(&self) -> &[String] {
+        &self.image_urls
+    }
+
+    /// Get the current image URL being used.
+    pub fn get_current_image_url(&self) -> &str {
+        &self.image_urls[self.current_url_index]
+    }
+
+    /// Get all image URLs as a comma-separated string.
+    pub fn get_image_urls_string(&self) -> String {
+        self.image_urls.join(", ")
     }
 
     /// Get the maximum retry count.
