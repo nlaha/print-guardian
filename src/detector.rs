@@ -160,6 +160,12 @@ impl FailureDetector {
             *pixel = (*pixel as f32) / 255.0;
         }
 
+        // print the first 10 pixels for debugging
+        debug!(
+            "First 10 pixels: {:?}",
+            image_data.iter().take(10).map(|p| *p).collect::<Vec<f32>>()
+        );
+
         // Run object detection with NMS parameters
         let detections = self.network.predict(image, 0.25, 0.5, 0.45, true);
 
