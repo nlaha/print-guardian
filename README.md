@@ -2,7 +2,14 @@
 
 AI-powered 3D print failure detection system that monitors printer cameras in real-time and automatically responds to detected failures.
 
+Supported alerting methods:
+- Discord webhook
+
 Utilizes the Obico Darknet model for object detection, integrated with Discord for alerts and Moonraker for printer control.
+
+<img width="522" height="461" alt="image" src="https://github.com/user-attachments/assets/e10f3c66-688f-4da0-9925-99f5f6b50576" />
+<img width="454" height="358" alt="image" src="https://github.com/user-attachments/assets/2ada9d3a-dda0-4e75-9557-ac9aea56f2c9" />
+
 
 ## Installation
 
@@ -18,7 +25,7 @@ cargo build --release
 
 ### Environment Variables
 
-All configuration is now handled through environment variables to support containerized deployments. Create a `.env` file or set these environment variables:
+All configuration is handled through environment variables to support containerized deployments. Create a `.env` file or set these environment variables:
 
 #### Required Variables
 
@@ -28,15 +35,15 @@ export DISCORD_WEBHOOK="https://discord.com/api/webhooks/YOUR_WEBHOOK_URL"
 export MOONRAKER_API_URL="http://your-printer.local:7125"
 ```
 
-#### Optional Variables (with defaults)
+#### Optional Variables
 
 ```bash
 export LABEL_FILE="./labels.txt"
 export MODEL_CFG="./model.cfg"
 export WEIGHTS_FILE="./model/model-weights.darknet"
 export OUTPUT_DIR="./output"
-export OBJECTNESS_THRESHOLD="0.5"
-export CLASS_PROB_THRESHOLD="0.5"
+export OBJECTNESS_THRESHOLD="0.08"
+export CLASS_PROB_THRESHOLD="0.4"
 ```
 
 ### Using .env File
@@ -52,6 +59,7 @@ cp .env.example .env
 
 ### Basic Usage
 
+`IMAGE_URL` can be a single URL or a comma-separated list. These URLs will be cycled through sequentially for detections.
 ```bash
 # Set environment variables
 export IMAGE_URL="http://camera.local/image.jpg"
