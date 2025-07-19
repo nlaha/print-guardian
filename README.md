@@ -2,7 +2,13 @@
 
 AI-powered 3D print failure detection system that monitors printer cameras in real-time and automatically responds to detected failures.
 
+Supported alerting methods:
+- Discord webhook
+
 Utilizes the Obico Darknet model for object detection, integrated with Discord for alerts and Moonraker for printer control.
+
+<img width="1043" height="922" alt="image" src="https://github.com/user-attachments/assets/e10f3c66-688f-4da0-9925-99f5f6b50576" />
+
 
 ## Installation
 
