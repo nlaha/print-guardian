@@ -194,14 +194,18 @@ impl FailureDetector {
                 .filter(|&o| o > 0.0)
                 .collect::<Vec<_>>()
         );
-        info!(
-            "Raw detection classes: {:?}",
-            detections
-                .iter()
-                .map(|d| d.best_class(None))
-                .filter(|c| c.is_some() && c.unwrap().1 > 0.0)
-                .collect::<Vec<_>>()
-        );
+
+        let raw_classes = detections
+            .iter()
+            .map(|d| d.best_class(None))
+            .filter(|c| c.is_some() && c.unwrap().1 > 0.0)
+            .collect::<Vec<_>>();
+
+        if raw_classes.is_empty() {
+            debug!("No valid classes detected");
+        } else {
+            info!("Raw detection classes: {:?}", raw_classes);
+        }
 
         let mut results = Vec::new();
 

@@ -206,7 +206,7 @@ fn main() -> Result<()> {
             None => continue,
         };
 
-        info!(
+        debug!(
             "{}: Fetched image from camera endpoints successfully",
             timestamp
         );
@@ -249,12 +249,14 @@ fn main() -> Result<()> {
             .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .unwrap_or(0.0);
 
-        info!(
-            "{}: Detected {} failures with max confidence {:.2}%",
-            timestamp,
-            detections.len(),
-            max_detection_prob
-        );
+        if (detections.len() > 0) {
+            info!(
+                "{}: Detected {} failures with max confidence {:.2}%",
+                timestamp,
+                detections.len(),
+                max_detection_prob
+            );
+        }
 
         // Process detections
         let significant_detections: Vec<_> = detections
