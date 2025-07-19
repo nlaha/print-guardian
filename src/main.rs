@@ -299,6 +299,10 @@ fn main() -> Result<()> {
 
                 // Check if we should pause the printer
                 if print_failures > constants::PRINT_FAILURE_THRESHOLD {
+                    warn!(
+                        "{}: Multiple print failures detected ({}). Pausing printer.",
+                        timestamp, print_failures
+                    );
                     match printer_service.pause_print() {
                         Ok(()) => {
                             let pause_image = annotated_image.as_deref();
