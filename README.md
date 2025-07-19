@@ -24,7 +24,7 @@ cargo build --release
 
 ### Environment Variables
 
-All configuration is now handled through environment variables to support containerized deployments. Create a `.env` file or set these environment variables:
+All configuration is handled through environment variables to support containerized deployments. Create a `.env` file or set these environment variables:
 
 #### Required Variables
 
@@ -58,6 +58,7 @@ cp .env.example .env
 
 ### Basic Usage
 
+`IMAGE_URL` can be a single URL or a comma-separated list. These URLs will be cycled through sequentially for detections.
 ```bash
 # Set environment variables
 export IMAGE_URL="http://camera.local/image.jpg"
