@@ -168,6 +168,20 @@ impl FailureDetector {
         let mean = image.get_data().iter().cloned().sum::<f32>() / image.get_data().len() as f32;
         debug!("Pixel stats: min={}, max={}, mean={}", min, max, mean);
 
+        // Ensure image is in BGR format
+        let image_data_mut = image.get_data_mut();
+        if image.channels() == 3 {
+            // Swap R and B channels if in RGB format
+            for chunk in image_data_mut.chunks_mut(3) {
+                chunk.swap(0, 2); // Swap R and B
+            }
+        } else if image.channels() != 1 && image.channels() != 3 {
+            return Err(anyhow::anyhow!(
+                "Unsupported image channel count: {}",
+                image.channels()
+            ));
+        }
+
         // Run object detection with NMS parameters
         let detections = self.network.predict(image, 0.25, 0.5, 0.45, true);
 
