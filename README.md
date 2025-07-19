@@ -42,7 +42,6 @@ export MOONRAKER_API_URL="http://your-printer.local:7125"
 export LABEL_FILE="./labels.txt"
 export MODEL_CFG="./model.cfg"
 export WEIGHTS_FILE="./model/model-weights.darknet"
-export OUTPUT_DIR="./output"
 export OBJECTNESS_THRESHOLD="0.08"
 export CLASS_PROB_THRESHOLD="0.4"
 ```
