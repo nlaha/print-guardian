@@ -98,6 +98,7 @@ impl Config {
     /// - `DISCORD_WEBHOOK`: Discord webhook URL (required)
     /// - `MOONRAKER_API_URL`: Moonraker API URL (required)
     /// - `FLIP_IMAGE`: Whether to flip images horizontally (default: "false")
+    /// - `DISPLAY_CAMERA_INDEX`: Optional index of the camera to display (default: 0)
     ///
     /// # Examples
     ///
