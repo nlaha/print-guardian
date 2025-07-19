@@ -7,7 +7,6 @@ services:
       dockerfile: ./Dockerfile
     env_file: .env
     volumes:
-      - ./input_file.jpg:/usr/src/app/input_file.jpg
       - ./model:/usr/src/app/model
     healthcheck:
       test: ["CMD-SHELL", "test -f .ready || exit 1"]
