@@ -98,19 +98,33 @@ docker run --env-file .env print-guardian
 ### Docker Compose
 
 ```yaml
-version: "3.8"
 services:
-  print-guardian:
-    build: .
-    env_file: .env
-    # Or use environment variables directly:
-    # environment:
-    #   - IMAGE_URL=http://camera.local/image.jpg
-    #   - DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
-    #   - MOONRAKER_API_URL=http://printer.local:7125
-    volumes:
-      - ./models:/app/models
+  worker:
+    image: printguardian
     restart: unless-stopped
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    env_file: .env
+    volumes:
+      - ./model:/usr/src/app/model
+    healthcheck:
+      test: ["CMD-SHELL", "test -f .ready || exit 1"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    devices:
+      # VAAPI Devices
+      - /dev/dri:/dev/dri
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 1024M
+        reservations:
+          cpus: '4'
+          memory: 512M
 ```
 
 ## Model Files
