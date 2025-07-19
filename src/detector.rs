@@ -194,7 +194,7 @@ impl FailureDetector {
                 .filter(|&o| o > 0.0)
                 .collect::<Vec<_>>()
         );
-        debug!(
+        info!(
             "Raw detection classes: {:?}",
             detections
                 .iter()
